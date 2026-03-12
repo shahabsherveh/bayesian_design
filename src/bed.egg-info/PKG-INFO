@@ -1,0 +1,22 @@
+Metadata-Version: 2.4
+Name: bed
+Version: 0.0.1
+Summary: A Bayesian experimental design library.
+Author-email: Shahab Sherveh <shahab.sherveh.0781@student.uu.se>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/shahabsherveh/bayesian_design
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: statsmodels
+Requires-Dist: scikit-learn
+Requires-Dist: jupyter
+Requires-Dist: matplotlib
+Requires-Dist: seaborn
+Requires-Dist: pytest
+Requires-Dist: ipdb
+Requires-Dist: cvxpy
+Requires-Dist: jax

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "bed"
+version = "0.0.1"
+authors = [
+  { name="Shahab Sherveh", email="shahab.sherveh.0781@student.uu.se" },
+]
+description = "A Bayesian experimental design library."
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+dynamic = ["dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/shahabsherveh/bayesian_design"
+[tool.setuptools.dynamic]
+dependencies = { file = "requirements.txt" }
