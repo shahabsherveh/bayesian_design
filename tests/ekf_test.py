@@ -21,7 +21,7 @@ class TestEKF:
         model = LinearModel()
         state = jnp.array([[0.0], [0.0]])  # Initial state
         state_cov = jnp.eye(2)  # Initial covariance
-        state_innovation_cov = 0
+        state_innovation_cov = jnp.zeros((2, 2))
         measurement_cov = jnp.eye(1)  # Measurement covariance
         measurement = jnp.array([[1.0]])
         X = jnp.array([[1.0, 0.5]])
@@ -35,11 +35,12 @@ class TestEKF:
         posterior = ekf.get_state_posterior(measurement=measurement, x=X)
         cov_prior = state_cov
         mean_pior = state
-        S = jnp.linalg.inv(cov_prior) + jnp.linalg.inv(measurement_cov)[0, 0] * X.T @ X
+        measurement_precision = 1.0 / measurement_cov[0, 0]
+        S = jnp.linalg.inv(cov_prior) + measurement_precision * X.T @ X
         cov_pos = jnp.linalg.inv(S)
         mean_pos = cov_pos @ (
             jnp.linalg.inv(cov_prior) @ mean_pior
-            + jnp.linalg.inv(measurement_cov)[0, 0] * X.T * measurement[0, 0]
+            + measurement_precision * X.T * measurement[0, 0]
         )
 
         assert jnp.allclose(posterior[0], mean_pos)
@@ -50,7 +51,7 @@ class TestEKF:
         model = LinearModel()
         state = jnp.array([[0.0], [0.0]])  # Initial state
         state_cov = jnp.eye(2)  # Initial covariance
-        state_innovation_cov = 0
+        state_innovation_cov = jnp.zeros((2, 2))
         measurement_cov = jnp.eye(1)  # Measurement covariance
         measurement = jnp.array([[10.0]])
         X = jnp.array([[1.0, 0.5]])
@@ -175,7 +176,6 @@ class TestExperimentalEKF:
             epochs=30,
             optimizer_params={"learning_rate": 1, "max_iters": 100, "x_init": None},
         )
-        breakpoint()
 
     def test_optimization_eig(self):
         experiment = Experiment1(

@@ -24,8 +24,8 @@ class TestGaussianProcessModel:
     model = GaussianProcessModel(kernel=kernel, X=X)
 
     def test_initialization(self):
-        assert model.kernel == self.kernel
-        assert np.array_equal(model.X, self.X)
+        assert self.model.kernel == self.kernel
+        assert np.array_equal(self.model.X, self.X)
 
     def test_prior_sample(self):
         prior = self.model.prior()
@@ -40,5 +40,4 @@ class TestGaussianProcessModel:
 
     def test_mutual_information(self):
         mi = self.model.mutual_information(self.X_obs_idx)
-        breakpoint()
         assert mi >= 0
