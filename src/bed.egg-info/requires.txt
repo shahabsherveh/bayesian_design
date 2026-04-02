@@ -9,3 +9,5 @@ pytest
 ipdb
 cvxpy
 jax
+tqdm
+optax

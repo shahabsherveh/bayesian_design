@@ -20,3 +20,5 @@ Requires-Dist: pytest
 Requires-Dist: ipdb
 Requires-Dist: cvxpy
 Requires-Dist: jax
+Requires-Dist: tqdm
+Requires-Dist: optax
