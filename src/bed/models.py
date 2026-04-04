@@ -1264,14 +1264,21 @@ class Experiment1:
         )
         cov_0 = j_1 @ sigma @ j_1.T + ekf.measurement_error
 
-        # epig = -jnp.log(1 - (posterior_covs_deficit.diagonal() / cov_0.diagonal())) / 2
+        epig = -jnp.log(1 - (posterior_covs_deficit.diagonal() / cov_0.diagonal())) / 2
 
         # Get the diagonal to ignore the cross-covariance of the design pool_values
         # Makes sense since in classical case the trace where calculated for the information matrix
-        epig = posterior_covs_deficit.diagonal() / cov_0.diagonal()
+        # epig = posterior_covs_deficit.diagonal() / cov_0.diagonal()
         return epig.mean()
 
-    def calculate_epig_monte_carlo(self, x_1, x_0, num_samples=1000):
+    def calculate_mutual_information_mc(
+        self,
+        y_1,
+        x_1,
+        y_0,
+        x_0,
+        latent_samples,
+    ):
         """
         Calculate EPIG using Monte Carlo sampling (incomplete implementation).
 
@@ -1287,17 +1294,64 @@ class Experiment1:
             This implementation is incomplete - it samples but doesn't compute
             the mutual information. Use calculate_epig() for a working implementation.
         """
+        mean_1 = self.model(latent_samples.T, x_1)
+        mean_0 = self.model(latent_samples.T, x_0)
+        epsilon_1 = mean_1 - y_1
+        epsilon_0 = mean_0 - y_0
+
+        @np.vectorize
+        def get_normal_likelihood(epsilon):
+            cov = self.measurement_error
+            return multivariate_normal().pdf(epsilon)
+
+        y_0_pdf_vals = get_normal_likelihood(epsilon_0)
+        y_1_pdf_vals = get_normal_likelihood(epsilon_1)
+        mi = np.log(
+            (y_0_pdf_vals * y_1_pdf_vals).mean(axis=0)
+            / (y_0_pdf_vals.mean(axis=0) * y_1_pdf_vals.mean(axis=0))
+        )
+        return mi
+
+    def calculate_epig_mc(
+        self, x, x_1=None, num_latent_samples=1000, num_outcome_samples=1000
+    ):
+        """
+        Calculate EPIG using Monte Carlo sampling (incomplete implementation).
+        Intended to compute EPIG by sampling from the joint distribution of
+        latent parameters and measurements, avoiding linearization approximations.
+        Args:
+            x: Proposed observation design
+            latent_samples: Number of samples for latent parameters
+            design_samples: Number of samples for prediction designs
+        """
         latent_samples = multivariate_normal(
             mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
-        ).rvs(size=num_samples)
-        y_1_samples = multivariate_normal(
-            mean=self.model(latent_samples.T, x_1).flatten(),
-            cov=self.measurement_error * np.eye(num_samples),
-        ).rvs()
-        y_0_samples = multivariate_normal(
-            mean=self.model(latent_samples.T, x_0).flatten(),
-            cov=self.measurement_error * np.eye(num_samples),
-        ).rvs()
+        ).rvs(size=num_latent_samples)
+        outcome_latent_samples = multivariate_normal(
+            mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
+        ).rvs(size=num_outcome_samples)
+        x_1 = x_1 if x_1 is not None else self.design_space.T
+        noise_0 = np.random.normal(
+            loc=0,
+            scale=np.sqrt(self.measurement_error),
+            size=(num_outcome_samples, x.shape[1]),
+        )
+        noise_1 = np.random.normal(
+            loc=0,
+            scale=np.sqrt(self.measurement_error),
+            size=(num_outcome_samples, x_1.shape[1]),
+        )
+        y_0_samples = self.model(outcome_latent_samples.T, x) + noise_0
+        y_1_samples = self.model(outcome_latent_samples.T, x_1) + noise_1
+
+        mi = self.calculate_mutual_information_mc(
+            y_1_samples,
+            x_1,
+            y_0_samples,
+            x,
+            latent_samples=latent_samples,
+        )
+        return mi.mean()
 
     def calculate_eig(self, x_0, x_1=None):
         """
@@ -1306,7 +1360,7 @@ class Experiment1:
         EIG measures how much information observing at x_1 provides about
         the latent parameters themselves (not predictions). For linear models,
         this equals x_1^T @ Cov_prior @ x_1, which is the prior variance
-        of measurements at x_1.
+        of measurenp.hstack(ments at x_1.
 
         Args:
             x_0: Proposed observation design of shape (d, 1)
@@ -1323,7 +1377,7 @@ class Experiment1:
         state_prior_cov = self.ekf.state_prior[1]
         measurement_error = self.measurement_error
 
-        eig = x_0.T @ state_prior_cov @ x_0 + measurement_error
+        eig = jnp.log(x_0.T @ state_prior_cov @ x_0 / measurement_error + 1) / 2
         return eig
 
     def optimize(
@@ -1503,16 +1557,17 @@ class Experiment1:
                     new_design=x_opt,
                     previous_designs=jnp.array(designs) if designs else None,
                 )
-            measurement = self.model(self.latent_true, x_opt) + np.random.normal(
-                0, np.sqrt(self.measurement_error)
-            )
+            measurement = self.model(self.latent_true, x_opt)
+            # + np.random.normal(
+            # 0, np.sqrt(self.measurement_error)
+            # )
             ekf.state_prior = ekf.get_state_posterior(measurement, x_opt)
             # latent_estimates = multivariate_normal(
             #     mean=ekf.state_prior[0].flatten(), cov=ekf.state_prior[1]
             # ).rvs(size=1000)
             estimate_mean, estimate_cov = ekf.state_prior
             predictions = self.model(estimate_mean.reshape(-1, 1), self.design_space.T)
-            rmse = self.calculate_rmse(predictions, true_measurements)
+            rmse = self.calculate_rmse()
             rmse_params = self.calculate_rmse_params(estimate_mean, self.latent_true)
             grad_lists.append(grads)
             progress_bar.set_postfix(
@@ -1531,7 +1586,7 @@ class Experiment1:
             crit_label=criterion_label,
         )
 
-    def calculate_rmse(self, predictions, true_measurements):
+    def calculate_rmse(self):
         """
         Calculate root mean squared error for predictions.
 
@@ -1542,7 +1597,14 @@ class Experiment1:
         Returns:
             Average RMSE across all prediction locations (scalar)
         """
-        return jnp.sqrt(jnp.mean((predictions - true_measurements) ** 2, axis=0)).mean()
+        sigma = self.ekf.state_prior[1]
+        pred_vars = jnp.apply_along_axis(
+            lambda x: x.T @ sigma @ x + self.measurement_error,
+            axis=1,
+            arr=self.design_space,
+        )
+        rmse_pred = jnp.sqrt(jnp.mean(pred_vars))
+        return rmse_pred
 
     def calculate_rmse_params(self, estimate_mean, latent_true):
         """
