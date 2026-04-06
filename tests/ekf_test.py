@@ -144,10 +144,11 @@ class TestExperimentalEKF:
         )
         x_0 = experiment.design_space[[0]].T
         epig_mc = experiment.calculate_epig_mc(
-            x_0, num_outcome_samples=10000, num_latent_samples=10000
+            x_0, num_latent_samples=10000, num_design_samples=100
         )
         epig = experiment.calculate_epig(x_0)
         assert jnp.isclose(epig_mc, epig, atol=1e-1)
+        breakpoint()
 
     def test_eig(self):
         experiment = Experiment1(

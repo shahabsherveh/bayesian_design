@@ -1297,23 +1297,22 @@ class Experiment1:
         mean_1 = self.model(latent_samples.T, x_1)
         mean_0 = self.model(latent_samples.T, x_0)
         epsilon_1 = mean_1 - y_1
-        epsilon_0 = mean_0 - y_0
+        epsilon_0 = mean_0 - y_0.T
 
-        @np.vectorize
         def get_normal_likelihood(epsilon):
             cov = self.measurement_error
-            return multivariate_normal().pdf(epsilon)
+            return (1 / jnp.sqrt(2 * jnp.pi * cov)) * jnp.exp(-0.5 * (epsilon**2) / cov)
 
         y_0_pdf_vals = get_normal_likelihood(epsilon_0)
         y_1_pdf_vals = get_normal_likelihood(epsilon_1)
-        mi = np.log(
+        mi = jnp.log(
             (y_0_pdf_vals * y_1_pdf_vals).mean(axis=0)
             / (y_0_pdf_vals.mean(axis=0) * y_1_pdf_vals.mean(axis=0))
         )
         return mi
 
     def calculate_epig_mc(
-        self, x, x_1=None, num_latent_samples=1000, num_outcome_samples=1000
+        self, x, x_1=None, num_latent_samples=1000, num_design_samples=100
     ):
         """
         Calculate EPIG using Monte Carlo sampling (incomplete implementation).
@@ -1324,26 +1323,31 @@ class Experiment1:
             latent_samples: Number of samples for latent parameters
             design_samples: Number of samples for prediction designs
         """
-        latent_samples = multivariate_normal(
-            mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
-        ).rvs(size=num_latent_samples)
+        if x_1 is None:
+            # x_1 = jax.random.choice(
+            #     jax.random.key(102), a=self.design_space, shape=(num_design_samples,)
+            # ).T
+            x_1 = self.design_dist.rvs(size=num_design_samples).T
+        M = x_1.shape[1]
         outcome_latent_samples = multivariate_normal(
             mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
-        ).rvs(size=num_outcome_samples)
-        x_1 = x_1 if x_1 is not None else self.design_space.T
+        ).rvs(size=M)
         noise_0 = np.random.normal(
             loc=0,
             scale=np.sqrt(self.measurement_error),
-            size=(num_outcome_samples, x.shape[1]),
+            size=(M, x.shape[1]),
         )
         noise_1 = np.random.normal(
             loc=0,
             scale=np.sqrt(self.measurement_error),
-            size=(num_outcome_samples, x_1.shape[1]),
+            size=(1, M),
         )
         y_0_samples = self.model(outcome_latent_samples.T, x) + noise_0
-        y_1_samples = self.model(outcome_latent_samples.T, x_1) + noise_1
+        y_1_samples = self.model(outcome_latent_samples.T, x_1).diagonal() + noise_1
 
+        latent_samples = multivariate_normal(
+            mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
+        ).rvs(size=num_latent_samples)
         mi = self.calculate_mutual_information_mc(
             y_1_samples,
             x_1,
