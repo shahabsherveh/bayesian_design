@@ -76,7 +76,7 @@ class TestEKF:
 class TestExperimentalEKF:
     jax.config.update("jax_enable_x64", True)
     latent_dim = 20
-    latent_true = 10 * jax.random.normal(jax.random.PRNGKey(0), (latent_dim, 1)) + 0
+    latent_true = 1 * jax.random.normal(jax.random.PRNGKey(0), (latent_dim, 1)) + 0
     latent_var = 0.1
     latent_innovation = 0
     measurement_cov = 1 * jnp.eye(1)
@@ -84,8 +84,8 @@ class TestExperimentalEKF:
     design_mean = jnp.zeros(latent_dim)
     design_mean = design_mean.at[4:].set(10)
     random_key = jax.random.PRNGKey(0)
-    eigs = jnp.full(latent_dim, fill_value=0.1, dtype="float64")
-    eigs = eigs.at[:4].set(1)
+    eigs = jnp.full(latent_dim, fill_value=0.01, dtype="float64")
+    eigs = eigs.at[:10].set(10)
     # eigs = 1 / (0.1 * jax.random.laplace(key=random_key, shape=(latent_dim,)))
     # eigs = jnp.abs(eigs)
     gd_params = {

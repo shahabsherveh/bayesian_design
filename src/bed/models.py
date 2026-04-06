@@ -19,9 +19,9 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import jax.numpy as jnp
 import jax
-import optax
 from tqdm import tqdm
 from copy import deepcopy
+import random
 
 
 class LinearGaussianModel:
@@ -1226,7 +1226,7 @@ class Experiment1:
         """
         return self.design_dist.rvs(size=design_num, random_state=0)
 
-    def calculate_epig(self, x_0, x_1=None):
+    def calculate_epig(self, x, x_1=None, **kwargs):
         """
         Calculate Expected Posterior Predictive Information Gain (EPIG).
 
@@ -1256,9 +1256,9 @@ class Experiment1:
         ekf = self.ekf
         state_prev = ekf.state_prior[0]
         j_1 = ekf.model.jacobian(state_prev.reshape(-1, 1), x_1)
-        j_0 = ekf.model.jacobian(state_prev.reshape(-1, 1), x_0)
+        j_0 = ekf.model.jacobian(state_prev.reshape(-1, 1), x)
         sigma = ekf.state_prior[1]
-        s_x = ekf.measurement_prior(x_0)[1]
+        s_x = ekf.measurement_prior(x)[1]
         posterior_covs_deficit = (
             j_1 @ sigma @ (j_0.T @ jnp.linalg.inv(s_x) @ j_0) @ sigma @ j_1.T
         )
@@ -1312,7 +1312,7 @@ class Experiment1:
         return mi
 
     def calculate_epig_mc(
-        self, x, x_1=None, num_latent_samples=1000, num_design_samples=100
+        self, x, x_1=None, num_latent_samples=1000, num_design_samples=100, **kwargs
     ):
         """
         Calculate EPIG using Monte Carlo sampling (incomplete implementation).
@@ -1323,11 +1323,14 @@ class Experiment1:
             latent_samples: Number of samples for latent parameters
             design_samples: Number of samples for prediction designs
         """
+        if x.ndim == 1:
+            x = x[:, None]
         if x_1 is None:
             # x_1 = jax.random.choice(
             #     jax.random.key(102), a=self.design_space, shape=(num_design_samples,)
             # ).T
-            x_1 = self.design_dist.rvs(size=num_design_samples).T
+            # x_1 = self.design_dist.rvs(size=num_design_samples).T
+            x_1 = self.design_space.T
         M = x_1.shape[1]
         outcome_latent_samples = multivariate_normal(
             mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
@@ -1357,7 +1360,7 @@ class Experiment1:
         )
         return mi.mean()
 
-    def calculate_eig(self, x_0, x_1=None):
+    def calculate_eig(self, x, x_1=None, **kwargs):
         """
         Calculate Expected Information Gain (EIG) about parameters.
 
@@ -1381,8 +1384,14 @@ class Experiment1:
         state_prior_cov = self.ekf.state_prior[1]
         measurement_error = self.measurement_error
 
-        eig = jnp.log(x_0.T @ state_prior_cov @ x_0 / measurement_error + 1) / 2
+        eig = jnp.log(x.T @ state_prior_cov @ x / measurement_error + 1) / 2
         return eig
+
+    def calculate_random(self, x, key=jax.random.key(0), **kwargs):
+        val = jax.random.uniform(
+            key=key,
+        )
+        return val
 
     def optimize(
         self,
@@ -1441,9 +1450,12 @@ class Experiment1:
             )
         # Initialize with design from pool that has highest criterion value
         elif x_init_type == "best_pool":
-            pool_values = jnp.apply_along_axis(
-                criterion_func, axis=1, arr=self.design_space
-            )
+            criterion_func_vectorized = jax.vmap(criterion_func)
+            seeds = np.random.randint(
+                0, 10000, size=(self.design_space.shape[0],)
+            )  # Random keys for randomness in criterion
+            keys = jax.vmap(jax.random.key)(seeds)
+            pool_values = criterion_func_vectorized(x=self.design_space, key=keys)
             best_index = jnp.argmax(pool_values)
             x = self.design_space[[best_index]].T
         # Randomly initialize from a normal distribution
@@ -1454,7 +1466,9 @@ class Experiment1:
         else:
             x = np.zeros((self.design_space.shape[1], 1))  # Default to zero vector
 
-        crit_value = criterion_func(x, self.design_space.T)  # Initial criterion value
+        crit_value = criterion_func(
+            x=x, x_1=self.design_space.T
+        )  # Initial criterion value
         grads = []
         crit_mean = None
         progress_bar = tqdm(
@@ -1536,6 +1550,10 @@ class Experiment1:
             criterion_func = self.calculate_epig
         elif criterion_label.upper() == "EIG":
             criterion_func = self.calculate_eig
+        elif criterion_label.upper() == "MC":
+            criterion_func = self.calculate_epig_mc
+        elif criterion_label.upper() == "RAND":
+            criterion_func = self.calculate_random
         designs = []
         crit_values = []
         rmse_values = []
@@ -1643,14 +1661,25 @@ class Experiment1:
             Creates a deepcopy of self for the second experiment to ensure
             independent EKF state evolution.
         """
-        new_self = deepcopy(self)
-        epig_results = self.run(
+        eig_self = deepcopy(self)
+        epig_self = deepcopy(self)
+        mc_self = deepcopy(self)
+        rand_self = deepcopy(self)
+        epig_results = epig_self.run(
             criterion_label="EPIG", epochs=iterations, optimizer_params=optimizer_params
         )
-        eig_results = new_self.run(
+        eig_results = eig_self.run(
             criterion_label="EIG", epochs=iterations, optimizer_params=optimizer_params
         )
-        return MultiExperimentResults([epig_results, eig_results])
+        epig_mc_resuls = mc_self.run(
+            criterion_label="MC", epochs=iterations, optimizer_params=optimizer_params
+        )
+        rand_results = rand_self.run(
+            criterion_label="RAND", epochs=iterations, optimizer_params=optimizer_params
+        )
+        return MultiExperimentResults(
+            [epig_results, eig_results, epig_mc_resuls, rand_results]
+        )
 
     def plot_crit_surface(
         self,
