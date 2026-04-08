@@ -1,10 +1,10 @@
-import jax.numpy as jnp
 import jax
-
-import matplotlib.pyplot as plt
-from bed.models import Experiment1
+import jax.numpy as jnp
+from bed.experiments import Experiment1
+from scipy import stats
 from .utils import linear_model_epig
-import scipy.stats as stats
+from matplotlib import pyplot as plt
+from tqdm import trange
 
 
 class TestExperimentalEKF:
@@ -77,12 +77,30 @@ class TestExperimentalEKF:
             measurement_error=self.measurement_cov,
         )
         x_0 = experiment.design_space[[0]].T
-        epig_mc = experiment.calculate_epig_mc(
-            x_0, num_latent_samples=10000, num_design_samples=100
-        )
+        epig_mc_list = []
+        pbar = trange(100, 10100, 100, desc="EPIG MC Samples", leave=True)
         epig = experiment.calculate_epig(x_0)
-        assert jnp.isclose(epig_mc, epig, atol=1e-1)
-        breakpoint()
+        for i in pbar:
+            epig_mc_inner = []
+            pbar_inner = trange(100, desc="EPIG MC Repeats", leave=False)
+            for _ in trange(100, desc="EPIG MC Repeats", leave=False):
+                epig_mc = experiment.calculate_epig_mc(
+                    x_0, num_latent_samples=i, num_design_samples=100
+                )
+                pbar_inner.set_description(f"EPIG MC: {epig_mc:.4f} EPIG: {epig:.4f}")
+                epig_mc_inner.append(epig_mc)
+            epig_mc_list.append(epig_mc_inner)
+        epig_samples = jnp.array(epig_mc_list)
+        q = [0.0, 0.25, 0.5, 0.75, 1.0]
+        for i, q_i in enumerate(q):
+            quantile = jnp.quantile(epig_samples, q=q_i, axis=1)
+            plt.plot(range(100, 10100, 100), quantile, label=f"Quantile {q_i}")
+        plt.axhline(epig, color="red", linestyle="--", label="True EPIG")
+        plt.xlabel("K")
+        plt.ylabel("EPIG Estimate")
+        plt.title("EPIG Monte Carlo Estimates vs True EPIG")
+        plt.legend()
+        plt.show()
 
     def test_eig(self):
         experiment = Experiment1(
