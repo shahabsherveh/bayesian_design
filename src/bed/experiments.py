@@ -10,7 +10,7 @@ from .ekf import EKF
 from .models import LinearModel
 
 
-class Experiment1:
+class Experiment:
     """
     Sequential experimental design framework using Extended Kalman Filter.
 
@@ -46,6 +46,7 @@ class Experiment1:
         design_mean,
         design_pool_num,
         measurement_error,
+        model=LinearModel(),
         plot_results=False,
     ):
         """
@@ -62,7 +63,7 @@ class Experiment1:
             measurement_error: Observation noise variance (scalar)
             plot_results: If True, plot optimization surfaces during run
         """
-        self.model = LinearModel()
+        self.model = model
         self.state_init_prior = self.build_prior(
             latent_dim=latent_dim, latent_variance=latent_var
         )
@@ -104,7 +105,8 @@ class Experiment1:
                 - mean: Zero vector of shape (latent_dim, 1)
                 - cov: Diagonal covariance matrix of shape (latent_dim, latent_dim)
         """
-        mean = np.zeros((latent_dim, 1))
+        # mean = np.zeros((latent_dim, 1))
+        mean = np.random.normal(loc=0, scale=0.0001, size=(latent_dim, 1))
         cov = np.eye(latent_dim) * latent_variance
         return mean, cov
 
@@ -162,6 +164,8 @@ class Experiment1:
             This is an approximation to the true EPIG which would require
             Monte Carlo sampling.
         """
+        if x.ndim == 1:
+            x = x[:, None]
         if x_1 is None:
             x_1 = self.design_space.T
         ekf = self.ekf
@@ -255,7 +259,8 @@ class Experiment1:
             size=(1, M),
         )
         y_0_samples = self.model(outcome_latent_samples.T, x) + noise_0
-        y_1_samples = self.model(outcome_latent_samples.T, x_1).diagonal() + noise_1
+        y_1_samples = self.model(outcome_latent_samples.T, x_1) + noise_1
+        y_1_samples = y_1_samples.diagonal()[None, :]
 
         latent_samples = multivariate_normal(
             mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
@@ -524,8 +529,12 @@ class Experiment1:
             Average RMSE across all prediction locations (scalar)
         """
         sigma = self.ekf.state_prior[1]
+
+        def j(x):
+            return self.model.jacobian(z=self.ekf.state_prior[0].reshape(-1, 1), x=x)
+
         pred_vars = jnp.apply_along_axis(
-            lambda x: x.T @ sigma @ x + self.measurement_error,
+            lambda x: j(x) @ sigma @ j(x).T + self.measurement_error,
             axis=1,
             arr=self.design_space,
         )
@@ -547,7 +556,12 @@ class Experiment1:
             jnp.mean((estimate_mean - latent_true.flatten()) ** 2, axis=0)
         ).mean()
 
-    def run_experiment(self, iterations=10, optimizer_params={}):
+    def run_experiment(
+        self,
+        experiments=["EPIG", "EIG", "MC", "RAND"],
+        iterations=10,
+        optimizer_params={},
+    ):
         """
         Compare EPIG and EIG design strategies side-by-side.
 
@@ -565,25 +579,16 @@ class Experiment1:
             Creates a deepcopy of self for the second experiment to ensure
             independent EKF state evolution.
         """
-        eig_self = deepcopy(self)
-        epig_self = deepcopy(self)
-        mc_self = deepcopy(self)
-        rand_self = deepcopy(self)
-        epig_results = epig_self.run(
-            criterion_label="EPIG", epochs=iterations, optimizer_params=optimizer_params
-        )
-        eig_results = eig_self.run(
-            criterion_label="EIG", epochs=iterations, optimizer_params=optimizer_params
-        )
-        epig_mc_resuls = mc_self.run(
-            criterion_label="MC", epochs=iterations, optimizer_params=optimizer_params
-        )
-        rand_results = rand_self.run(
-            criterion_label="RAND", epochs=iterations, optimizer_params=optimizer_params
-        )
-        return MultiExperimentResults(
-            [epig_results, eig_results, epig_mc_resuls, rand_results]
-        )
+        results = []
+        for experiment in experiments:
+            self_copy = deepcopy(self)
+            r = self_copy.run(
+                criterion_label=experiment,
+                epochs=iterations,
+                optimizer_params=optimizer_params,
+            )
+            results.append(r)
+        return MultiExperimentResults(results)
 
     def plot_crit_surface(
         self,

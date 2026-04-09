@@ -22,3 +22,8 @@ dynamic = ["dependencies"]
 Homepage = "https://github.com/shahabsherveh/bayesian_design"
 [tool.setuptools.dynamic]
 dependencies = { file = "requirements.txt" }
+[tool.pytest.ini_options]
+testpaths = [
+  "tests"
+]
+addopts ="--pdb --pdbcls=IPython.terminal.debugger:TerminalPdb -s"

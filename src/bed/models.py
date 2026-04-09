@@ -662,9 +662,7 @@ class GP:
 
 def generate_full_design_matrix(design_dim: tuple[int, int]) -> np.ndarray:
     """
-    Generate a 2D grid of design points over [-1, 1]^2.
-
-    Creates a regular grid for spatial experimental design problems.
+    Generate a 2D grid of design points over [-1, 1]^2. Creates a regular grid for spatial experimental design problems.
     Commonly used with GaussianProcessModel.
 
     Args:
@@ -952,6 +950,7 @@ class NeuralNetworkModel(Model):
             + self.hidden_dim_1 * 1
             + 1
         ), "Parameter vector z has incorrect size."
+        assert x.shape[0] == self.input_dim, "Input x has incorrect dimensionality."
         w_0_slice = jnp.arange(self.input_dim * self.hidden_dim_0)
         b_0_slice = jnp.arange(w_0_slice[-1] + 1, w_0_slice[-1] + 1 + self.hidden_dim_0)
         w_1_slice = jnp.arange(
@@ -961,12 +960,12 @@ class NeuralNetworkModel(Model):
         w_2_slice = jnp.arange(b_1_slice[-1] + 1, b_1_slice[-1] + 1 + self.hidden_dim_1)
         b_2_slice = jnp.arange(w_2_slice[-1] + 1, w_2_slice[-1] + 1 + 1)
         w_0 = z[w_0_slice].reshape(self.input_dim, self.hidden_dim_0)
-        b_0 = z[b_0_slice].reshape(self.hidden_dim_0)
+        b_0 = z[b_0_slice].reshape(self.hidden_dim_0, 1)
         w_1 = z[w_1_slice].reshape(self.hidden_dim_0, self.hidden_dim_1)
-        b_1 = z[b_1_slice].reshape(self.hidden_dim_1)
+        b_1 = z[b_1_slice].reshape(self.hidden_dim_1, 1)
         w_2 = z[w_2_slice].reshape(self.hidden_dim_1, 1)
-        b_2 = z[b_2_slice].reshape(1)
-        hidden_0 = jax.nn.relu(jnp.dot(x, w_0) + b_0)
-        hidden_1 = jax.nn.relu(jnp.dot(hidden_0, w_1) + b_1)
-        output = jax.nn.identity(jnp.dot(hidden_1, w_2) + b_2)
-        return output.reshape(1, -1)
+        b_2 = z[b_2_slice].reshape(1, 1)
+        hidden_0 = jax.nn.relu(jnp.dot(w_0.T, x) + b_0)
+        hidden_1 = jax.nn.relu(jnp.dot(w_1.T, hidden_0) + b_1)
+        output = jax.nn.identity(jnp.dot(w_2.T, hidden_1) + b_2)
+        return output
