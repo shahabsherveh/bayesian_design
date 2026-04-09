@@ -34,8 +34,20 @@ pytest tests/
 Run Experimenta 1 with:
 
 ```
-pytest -s --pdb --pdbcls=IPython.terminal.debugger:TerminalPdb  tests/ekf_test.py::TestExperimentalEKF::test_run
+pytest tests/experiment_test.py::TestEperiment1::test_run
 
+```
+
+Run Experiment 1 Monte Carlo Estimation with:
+
+```
+pytest tests/experiment_test.py::TestEperiment1::test_epig_monte_carlo
+```
+
+Run Experiment 2 with:
+
+```
+pytest tests/experiment_test.py::TestEperiment2::test_run
 ```
 
 ## License
@@ -49,3 +61,7 @@ MIT License
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+```
+
+```
