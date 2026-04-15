@@ -298,7 +298,10 @@ class Experiment:
         state_prior_cov = self.ekf.state_prior[1]
         measurement_error = self.measurement_error
 
-        eig = jnp.log(x.T @ state_prior_cov @ x / measurement_error + 1) / 2
+        def J(x):
+            return self.model.jacobian(z=self.ekf.state_prior[0].reshape(-1, 1), x=x)
+
+        eig = jnp.log(J(x) @ state_prior_cov @ J(x).T / measurement_error + 1) / 2
         return eig
 
     def calculate_random(self, x, key=jax.random.key(0), **kwargs):

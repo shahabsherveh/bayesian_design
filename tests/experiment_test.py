@@ -278,7 +278,6 @@ class TestExperiment2:
         # x_1 = jnp.ones_like(experiment.design_space[[0]].T)
         x_0 = jnp.array([[1.0], [0], [0], [0], [0]])
         x_1 = jnp.array([[0], [1.0], [0], [0], [0]])
-        breakpoint()
         epig = experiment.calculate_epig(x_1, x_0)
         # linear_epig = linear_model_epig(
         #     x_1,
