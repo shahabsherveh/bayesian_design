@@ -11,4 +11,5 @@ cvxpy
 jax
 tqdm
 optax
+flax
 

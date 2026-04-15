@@ -1,13 +1,14 @@
 from copy import deepcopy
 import jax
 import jax.numpy as jnp
+from flax import nnx
 import numpy as np
 from scipy.stats import multivariate_normal
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from .ekf import EKF
-from .models import LinearModel
+from .models import LinearModel, Model
 
 
 class Experiment:
@@ -46,7 +47,7 @@ class Experiment:
         design_mean,
         design_pool_num,
         measurement_error,
-        model=LinearModel(),
+        model: Model = LinearModel(input_dim=10, rngs=nnx.Rngs(0)),
         plot_results=False,
     ):
         """
@@ -64,7 +65,7 @@ class Experiment:
             plot_results: If True, plot optimization surfaces during run
         """
         self.model = model
-        self.state_init_prior = self.build_prior(
+        self.state_init_cov = self.build_prior(
             latent_dim=latent_dim, latent_variance=latent_var
         )
         self.design_dist = self.build_design_dist(
@@ -76,8 +77,7 @@ class Experiment:
         self.latent_innovation = latent_innovation
         self.ekf = EKF(
             model=self.model,
-            state_prev=self.state_init_prior[0],
-            state_cov_prev=self.state_init_prior[1],
+            state_cov=self.state_init_cov,
             state_innovation=self.latent_innovation,
             measurement_error=self.measurement_error,
         )
@@ -105,10 +105,8 @@ class Experiment:
                 - mean: Zero vector of shape (latent_dim, 1)
                 - cov: Diagonal covariance matrix of shape (latent_dim, latent_dim)
         """
-        # mean = np.zeros((latent_dim, 1))
-        mean = np.random.normal(loc=0, scale=0.0001, size=(latent_dim, 1))
-        cov = np.eye(latent_dim) * latent_variance
-        return mean, cov
+        cov = np.eye(latent_dim + 1) * latent_variance
+        return cov
 
     @staticmethod
     def build_design_dist(design_cov, design_mean):
@@ -167,12 +165,11 @@ class Experiment:
         if x.ndim == 1:
             x = x[:, None]
         if x_1 is None:
-            x_1 = self.design_space.T
+            x_1 = self.design_space
         ekf = self.ekf
-        state_prev = ekf.state_prior[0]
-        j_1 = ekf.model.jacobian(state_prev.reshape(-1, 1), x_1)
-        j_0 = ekf.model.jacobian(state_prev.reshape(-1, 1), x)
-        sigma = ekf.state_prior[1]
+        j_1 = self.model.gradient(x_1)
+        j_0 = self.model.gradient(x)
+        sigma = ekf.state_cov_prior
         s_x = ekf.measurement_prior(x)[1]
         posterior_covs_deficit = (
             j_1 @ sigma @ (j_0.T @ jnp.linalg.inv(s_x) @ j_0) @ sigma @ j_1.T
@@ -246,7 +243,7 @@ class Experiment:
             x_1 = self.design_space.T
         M = x_1.shape[1]
         outcome_latent_samples = multivariate_normal(
-            mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
+            mean=self.ekf.state_mean_prior.flatten(), cov=self.ekf.state_cov_prior
         ).rvs(size=M)
         noise_0 = np.random.normal(
             loc=0,
@@ -263,7 +260,7 @@ class Experiment:
         y_1_samples = y_1_samples.diagonal()[None, :]
 
         latent_samples = multivariate_normal(
-            mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
+            mean=self.ekf.state_mean_prior.flatten(), cov=self.ekf.state_cov_prior
         ).rvs(size=num_latent_samples)
         mi = self.calculate_mutual_information_mc(
             y_1_samples,
@@ -295,10 +292,11 @@ class Experiment:
             Monte Carlo estimation. The optimal EIG design is proportional to
             the eigenvector with largest eigenvalue of the prior covariance.
         """
-        state_prior_cov = self.ekf.state_prior[1]
+        state_prior_cov = self.ekf.state_cov_prior
         measurement_error = self.measurement_error
+        J = self.model.gradient(x)
 
-        eig = jnp.log(x.T @ state_prior_cov @ x / measurement_error + 1) / 2
+        eig = jnp.log(J @ state_prior_cov @ J.T / measurement_error + 1).diagonal() / 2
         return eig
 
     def calculate_random(self, x, key=jax.random.key(0), **kwargs):
@@ -369,9 +367,12 @@ class Experiment:
                 0, 10000, size=(self.design_space.shape[0],)
             )  # Random keys for randomness in criterion
             keys = jax.vmap(jax.random.key)(seeds)
-            pool_values = criterion_func_vectorized(x=self.design_space, key=keys)
+            design_permutation = jax.random.permutation(
+                jax.random.key(0), self.design_space
+            )
+            pool_values = criterion_func_vectorized(x=design_permutation, key=keys)
             best_index = jnp.argmax(pool_values)
-            x = self.design_space[[best_index]].T
+            x = design_permutation[best_index].reshape(-1, 1)
         # Randomly initialize from a normal distribution
         elif x_init_type == "normal":
             x = np.random.normal(loc=0, scale=1, size=(self.design_space.shape[1], 1))
@@ -471,11 +472,13 @@ class Experiment:
         designs = []
         crit_values = []
         rmse_values = []
+        rmse_values_frequentist = []
         rmse_params_values = []
         grad_lists = []
         progress_bar = tqdm(
             range(epochs), total=epochs, desc=f"Running {criterion_label} Experiment"
         )
+        outcome_true = self.model(self.latent_true, self.design_space.T)
         for i in progress_bar:
             x_opt, crit_value, grads = self.optimize(
                 criterion_func=criterion_func,
@@ -492,14 +495,23 @@ class Experiment:
             # + np.random.normal(
             # 0, np.sqrt(self.measurement_error)
             # )
-            ekf.state_prior = ekf.get_state_posterior(measurement, x_opt)
+            prior_mean = ekf.state_mean_prior
+            prior_cov = ekf.state_cov_prior
+            posterior_mean, posterior_cov = ekf.get_state_posterior(measurement, x_opt)
+            radius = jnp.linalg.matrix_norm(prior_cov)
+            # if jnp.linalg.norm(prior_mean - posterior_mean) < radius:
+            #     breakpoint()
+            ekf.update_model_state(posterior_mean, posterior_cov)
             # latent_estimates = multivariate_normal(
             #     mean=ekf.state_prior[0].flatten(), cov=ekf.state_prior[1]
             # ).rvs(size=1000)
-            estimate_mean, estimate_cov = ekf.state_prior
-            predictions = self.model(estimate_mean.reshape(-1, 1), self.design_space.T)
+            predictions = self.model(self.design_space)
             rmse = self.calculate_rmse()
-            rmse_params = self.calculate_rmse_params(estimate_mean, self.latent_true)
+            rmse_frequentist = self.calculate_rmse_frequentist(
+                predictions, outcome_true
+            )
+
+            rmse_params = self.calculate_rmse_params(posterior_mean, self.latent_true)
             grad_lists.append(grads)
             progress_bar.set_postfix(
                 {"Prediction RMSE": rmse, "Parameter RMSE": rmse_params}
@@ -508,9 +520,11 @@ class Experiment:
             crit_values.append(crit_value)
             rmse_values.append(rmse)
             rmse_params_values.append(rmse_params)
+            rmse_values_frequentist.append(rmse_frequentist)
         return ExperimentResults(
             rmse_params_values,
             rmse_values,
+            rmse_values_frequentist,
             jnp.array(designs),
             crit_values,
             grad_lists,
@@ -528,10 +542,10 @@ class Experiment:
         Returns:
             Average RMSE across all prediction locations (scalar)
         """
-        sigma = self.ekf.state_prior[1]
+        sigma = self.ekf.state_cov_prior
 
         def j(x):
-            return self.model.jacobian(z=self.ekf.state_prior[0].reshape(-1, 1), x=x)
+            return self.model.gradient(x)
 
         pred_vars = jnp.apply_along_axis(
             lambda x: j(x) @ sigma @ j(x).T + self.measurement_error,
@@ -552,9 +566,19 @@ class Experiment:
         Returns:
             Average RMSE across all parameters (scalar)
         """
-        return jnp.sqrt(
-            jnp.mean((estimate_mean - latent_true.flatten()) ** 2, axis=0)
-        ).mean()
+        return jnp.sqrt(jnp.mean((estimate_mean - latent_true) ** 2))
+
+    def calculate_rmse_frequentist(self, predictions, true_measurements):
+        """
+        Calculate RMSE using frequentist approach (not used in current implementation).
+        Args:
+            predictions: Predicted measurement values
+            true_measurements: True measurement values
+        Returns:
+            Average RMSE across all prediction locations (scalar)
+        """
+        rmse = jnp.sqrt(jnp.mean((predictions - true_measurements.flatten()) ** 2))
+        return rmse
 
     def run_experiment(
         self,
@@ -720,6 +744,7 @@ class ExperimentResults:
         self,
         rmse_params_values,
         rmse_values,
+        rmse_values_frequentist,
         designs,
         crit_values,
         grad_lists,
@@ -738,6 +763,7 @@ class ExperimentResults:
         """
         self.rmse_params_values = rmse_params_values
         self.rmse_values = rmse_values
+        self.rmse_values_frequentist = rmse_values_frequentist
         self.designs = designs
         self.crit_values = crit_values
         self.grad_lists = grad_lists
@@ -810,10 +836,20 @@ class MultiExperimentResults:
         Note:
             Each curve is labeled with its criterion name (from crit_label).
         """
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, axes = plt.subplots(1, 3, figsize=(12, 6), sharex=True)
         for result in self.experiment_results_list:
-            ax.plot(result.rmse_values, marker="o", label=result.crit_label)
-        ax.set_title("Comparison of RMSE over Iterations")
-        ax.set_xlabel("Iteration")
-        ax.set_ylabel("RMSE Value")
-        ax.legend()
+            axes[0].plot(result.rmse_values, marker="o", label=result.crit_label)
+            axes[1].plot(result.rmse_params_values, marker="o", label=result.crit_label)
+            axes[2].plot(
+                result.rmse_values_frequentist, marker="o", label=result.crit_label
+            )
+        axes[0].set_title("Comparison of RMSE over Iterations")
+        axes[0].set_xlabel("Iteration")
+        axes[0].set_ylabel("RMSE Value")
+        axes[1].set_title("Comparison of Parameter RMSE over Iterations")
+        axes[1].set_xlabel("Iteration")
+        axes[1].set_ylabel("Parameter RMSE Value")
+        axes[2].set_title("Comparison of Frequentist RMSE over Iterations")
+        axes[2].set_xlabel("Iteration")
+        axes[2].set_ylabel("Frequentist RMSE Value")
+        fig.legend(loc="upper right", handles=axes[0].get_lines())

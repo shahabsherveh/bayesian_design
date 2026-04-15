@@ -22,6 +22,9 @@ import jax
 from tqdm import tqdm
 from copy import deepcopy
 import random
+from flax import nnx
+
+from bed.utils import state_to_weights
 
 
 class LinearGaussianModel:
@@ -832,7 +835,7 @@ class GaussianProcessModel:
         plt.show()
 
 
-class Model:
+class Model(nnx.Module):
     """
     Base class for measurement models used with Extended Kalman Filter.
 
@@ -844,7 +847,7 @@ class Model:
         gradients needed for EKF linearization.
     """
 
-    def jacobian(self, z, x, argnums=0):
+    def gradient(self, x):
         """
         Compute Jacobian of the measurement model using JAX autodiff.
 
@@ -862,28 +865,13 @@ class Model:
         Note:
             Uses JAX's automatic differentiation for exact gradients.
         """
-        jac = jax.jacobian(self.__call__, argnums=argnums)
-        jac_value = jac(z, x)[0, ..., 0]
-        if jac_value.ndim == 1:
-            jac_value = jac_value[None, :]
-        return jac_value
 
-    def __call__(self, z, x):
-        """
-        Evaluate measurement model.
+        def fn_model(model):
+            return model(x).mean()
 
-        Args:
-            z: Latent state vector
-            x: Design vector or matrix
-
-        Returns:
-            Predicted measurement(s)
-
-        Note:
-            This is a placeholder. Subclasses must override this method.
-        """
-
-        raise NotImplementedError("Subclasses must implement the __call__ method.")
+        grad = nnx.grad(fn_model)(self)
+        grad_weights = state_to_weights(grad).T
+        return grad_weights
 
 
 class LinearModel(Model):
@@ -894,78 +882,57 @@ class LinearModel(Model):
     Commonly used for linear regression problems and as a test case.
     """
 
-    def __call__(self, z, x):
-        """
-        Compute linear measurement: y = z^T @ x.
-
-        Args:
-            z: Latent state vector of shape (d, 1)
-            x: Design vector/matrix of shape (d, n) where n is number of observations
-
-        Returns:
-            Measurements of shape (1, n)
-        """
-        return z.T @ x
-
-
-class NeuralNetworkModel(Model):
-    """
-    Nonlinear measurement model implemented as a simple feedforward neural network.
-    This model captures complex relationships between latent states and designs,
-    making it suitable for testing the Extended Kalman Filter's ability to
-    handle nonlinear dynamics.
-    Attributes:
-        W1: Weight matrix for first layer
-        b1: Bias vector for first layer
-        W2: Weight matrix for second layer
-        b2: Bias vector for second layer
-    """
-
-    def __init__(self, input_dim, hidden_dim_0, hidden_dim_1, key=None):
-        """
-        Initialize neural network parameters.
-        Args:
-            input_dim: Dimensionality of input (state + design)
-            hidden_dim: Number of hidden units in the network
-            key: JAX random key for reproducibility (optional)
-        """
-        self.input_dim = input_dim
-        self.hidden_dim_0 = hidden_dim_0
-        self.hidden_dim_1 = hidden_dim_1
-
-    def __call__(self, z, x):
-        """
-        Compute nonlinear measurement using a feedforward neural network.
-        Args:
-            z: Latent state vector of shape (d, 1)
-            x: Design vector/matrix of shape (d, n)
-        Returns:
-            Measurements of shape (1, n) after passing through the network
-        """
-        assert z.shape[0] == (
-            self.input_dim * self.hidden_dim_0
-            + self.hidden_dim_0
-            + self.hidden_dim_0 * self.hidden_dim_1
-            + self.hidden_dim_1
-            + self.hidden_dim_1 * 1
-            + 1
-        ), "Parameter vector z has incorrect size."
-        assert x.shape[0] == self.input_dim, "Input x has incorrect dimensionality."
-        w_0_slice = jnp.arange(self.input_dim * self.hidden_dim_0)
-        b_0_slice = jnp.arange(w_0_slice[-1] + 1, w_0_slice[-1] + 1 + self.hidden_dim_0)
-        w_1_slice = jnp.arange(
-            b_0_slice[-1] + 1, b_0_slice[-1] + 1 + self.hidden_dim_0 * self.hidden_dim_1
+    def __init__(self, input_dim, rngs):
+        super().__init__()
+        self.linear = nnx.Linear(
+            in_features=input_dim, out_features=1, use_bias=True, rngs=rngs
         )
-        b_1_slice = jnp.arange(w_1_slice[-1] + 1, w_1_slice[-1] + 1 + self.hidden_dim_1)
-        w_2_slice = jnp.arange(b_1_slice[-1] + 1, b_1_slice[-1] + 1 + self.hidden_dim_1)
-        b_2_slice = jnp.arange(w_2_slice[-1] + 1, w_2_slice[-1] + 1 + 1)
-        w_0 = z[w_0_slice].reshape(self.input_dim, self.hidden_dim_0)
-        b_0 = z[b_0_slice].reshape(self.hidden_dim_0, 1)
-        w_1 = z[w_1_slice].reshape(self.hidden_dim_0, self.hidden_dim_1)
-        b_1 = z[b_1_slice].reshape(self.hidden_dim_1, 1)
-        w_2 = z[w_2_slice].reshape(self.hidden_dim_1, 1)
-        b_2 = z[b_2_slice].reshape(1, 1)
-        hidden_0 = jax.nn.relu(jnp.dot(w_0.T, x) + b_0)
-        hidden_1 = jax.nn.relu(jnp.dot(w_1.T, hidden_0) + b_1)
-        output = jax.nn.identity(jnp.dot(w_2.T, hidden_1) + b_2)
+
+    def __call__(self, x):
+        output = self.linear(x)
+        return output
+
+
+class NeuralNetworkFlax(Model):
+    """
+    Neural network model implemented using Flax for use in EKF measurement modeling.
+    This model captures complex nonlinear relationships and is compatible with JAX
+    for automatic differentiation and efficient computation.
+    Attributes:
+        hidden_dim_0: Number of units in the first hidden layer
+        hidden_dim_1: Number of units in the second hidden layer
+    """
+
+    def __init__(self, input_dim, hidden_dim_0, hidden_dim_1, rngs):
+        super().__init__()
+        self.dense_0 = nnx.Linear(
+            in_features=input_dim,
+            out_features=hidden_dim_0,
+            use_bias=True,
+            rngs=rngs,
+        )
+        self.dense_1 = nnx.Linear(
+            in_features=hidden_dim_0,
+            out_features=hidden_dim_1,
+            use_bias=True,
+            rngs=rngs,
+        )
+        self.output_layer = nnx.Linear(
+            in_features=hidden_dim_1,
+            out_features=1,
+            use_bias=True,
+            rngs=rngs,
+        )
+
+    def __call__(self, x):
+        """
+        Forward pass through the neural network.
+        Args:
+            x: Input design vector/matrix of shape (input_dim, n)
+                                                    Returns:
+        Output measurements of shape (1, n) after passing through the network
+        """
+        hidden_0 = jax.nn.relu(self.dense_0(x))
+        hidden_1 = jax.nn.relu(self.dense_1(hidden_0))
+        output = self.output_layer(hidden_1)
         return output

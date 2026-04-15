@@ -25,13 +25,13 @@ pip install -e .
 
 ## Testing
 
-Run tests with pytest:
+Run tests with `pytest`:
 
 ```bash
 pytest tests/
 ```
 
-Run Experimenta 1 with:
+Run Experiment 1 with:
 
 ```
 pytest tests/experiment_test.py::TestEperiment1::test_run
