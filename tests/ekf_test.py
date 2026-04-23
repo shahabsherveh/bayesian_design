@@ -8,12 +8,12 @@ class TestEKF:
     def test_pos(self):
         # Define a simple linear model
         model = LinearModel()
-        state = jnp.array([[0.0], [0.0]])  # Initial state
-        state_cov = jnp.eye(2)  # Initial covariance
+        state = jnp.array([[10], [1.0]])  # Initial state
+        state_cov = 0.1 * jnp.eye(2)  # Initial covariance
         state_innovation_cov = 0
         measurement_cov = jnp.eye(1)  # Measurement covariance
-        measurement = jnp.array([[1.0]])
-        X = jnp.array([[1.0, 0.5]])
+        measurement = jnp.array([[1]])
+        X = jnp.array([[10, 1.5]]).T
         ekf = EKF(
             model,
             state,
@@ -24,15 +24,15 @@ class TestEKF:
         posterior = ekf.get_state_posterior(measurement=measurement, x=X)
         cov_prior = state_cov
         mean_pior = state
-        S = jnp.linalg.inv(cov_prior) + jnp.linalg.inv(measurement_cov)[0, 0] * X.T @ X
+        S = jnp.linalg.inv(cov_prior) + jnp.linalg.inv(measurement_cov)[0, 0] * X @ X.T
         cov_pos = jnp.linalg.inv(S)
         mean_pos = cov_pos @ (
             jnp.linalg.inv(cov_prior) @ mean_pior
-            + jnp.linalg.inv(measurement_cov)[0, 0] * X.T * measurement[0, 0]
+            + jnp.linalg.inv(measurement_cov)[0, 0] * X * measurement[0, 0]
         )
 
-        assert jnp.allclose(posterior.mean, mean_pos.flatten())
-        assert jnp.allclose(posterior.cov, cov_pos)
+        assert jnp.allclose(posterior[0], mean_pos)
+        assert jnp.allclose(posterior[1], cov_pos)
 
     def test_pred_pos_estimate(self):
         # Define a simple linear model
@@ -42,7 +42,7 @@ class TestEKF:
         state_innovation_cov = 0
         measurement_cov = jnp.eye(1)  # Measurement covariance
         measurement = jnp.array([[10.0]])
-        X = jnp.array([[1.0, 0.5]])
+        X = jnp.array([[1.0, 0.5]]).T
         ekf = EKF(
             model,
             state,
@@ -58,4 +58,4 @@ class TestEKF:
             X + 1,
             X,
         )
-        assert jnp.allclose(posterior.cov, cov_est)
+        assert jnp.allclose(posterior[1], cov_est)

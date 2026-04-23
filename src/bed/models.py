@@ -965,7 +965,9 @@ class NeuralNetworkModel(Model):
         b_1 = z[b_1_slice].reshape(self.hidden_dim_1, 1)
         w_2 = z[w_2_slice].reshape(self.hidden_dim_1, 1)
         b_2 = z[b_2_slice].reshape(1, 1)
-        hidden_0 = jax.nn.relu(jnp.dot(w_0.T, x) + b_0)
-        hidden_1 = jax.nn.relu(jnp.dot(w_1.T, hidden_0) + b_1)
+
+        hidden_0 = jax.nn.selu(jnp.dot(w_0.T, x) + b_0)
+        hidden_1 = jax.nn.selu(jnp.dot(w_1.T, hidden_0) + b_1)
         output = jax.nn.identity(jnp.dot(w_2.T, hidden_1) + b_2)
+
         return output

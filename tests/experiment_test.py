@@ -11,17 +11,17 @@ from tqdm import trange
 
 class TestExperiment1:
     jax.config.update("jax_enable_x64", True)
-    latent_dim = 20
+    latent_dim = 2
     latent_true = 1 * jax.random.normal(jax.random.PRNGKey(0), (latent_dim, 1)) + 0
     latent_var = 0.1
     latent_innovation = 0
-    measurement_cov = 1 * jnp.eye(1)
+    measurement_cov = 0.1 * jnp.eye(1)
     design_pool_num = 100
     design_mean = jnp.zeros(latent_dim)
     design_mean = design_mean.at[4:].set(10)
     random_key = jax.random.PRNGKey(0)
     eigs = jnp.full(latent_dim, fill_value=0.01, dtype="float64")
-    eigs = eigs.at[:10].set(10)
+    eigs = eigs.at[:1].set(1.99)
     # eigs = 1 / (0.1 * jax.random.laplace(key=random_key, shape=(latent_dim,)))
     # eigs = jnp.abs(eigs)
     gd_params = {
@@ -32,7 +32,7 @@ class TestExperiment1:
         "x_init_type": "best_pool",
     }
     # epochs = int(10 * latent_dim)
-    epochs = 100
+    epochs = 3
     eigs = latent_dim * eigs / eigs.sum()
     design_cov = 10 * stats.random_correlation.rvs(
         eigs=eigs,
@@ -41,12 +41,12 @@ class TestExperiment1:
         diag_tol=1e-6,
     )
     # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
-    plot_results = False
+    plot_results = True
 
     def test_epig(self):
         experiment = Experiment(
             latent_true=self.latent_true,
-            latent_dim=self.latent_dim,
+            latent_dim=2,
             latent_var=self.latent_var,
             latent_innovation=self.latent_innovation,
             design_pool_num=self.design_pool_num,
@@ -128,13 +128,15 @@ class TestExperiment1:
             design_mean=self.design_mean,
             design_cov=self.design_cov,
             measurement_error=self.measurement_cov,
+            plot_results=self.plot_results,
         )
         # x, epig, grads = experiment.optimize_epig_gd(learning_rate=0.5, max_iters=1000)
         results = experiment.run(
             criterion_label="EPIG",
-            epochs=30,
-            optimizer_params={"learning_rate": 1, "max_iters": 100, "x_init": None},
+            epochs=5,
+            optimizer_params={"learning_rate": 1, "max_iters": 50, "x_init": None},
         )
+        plt.show()
 
     def test_optimization_eig(self):
         experiment = Experiment(
@@ -146,49 +148,14 @@ class TestExperiment1:
             design_mean=self.design_mean,
             design_cov=self.design_cov,
             measurement_error=self.measurement_cov,
-        )
-        x, eig = experiment.optimize_eig_gd(learning_rate=1, max_iters=10)
-
-    def test_run_epig(self):
-        experiment = Experiment(
-            latent_true=self.latent_true,
-            latent_dim=self.latent_dim,
-            latent_var=self.latent_var,
-            latent_innovation=self.latent_innovation,
-            design_pool_num=self.design_pool_num,
-            design_mean=self.design_mean,
-            design_cov=self.design_cov,
-            measurement_error=self.measurement_cov,
             plot_results=self.plot_results,
         )
-        experiment_results = experiment.run_epig(
-            iterations=50,
-            gd_params={"learning_rate": 10, "max_iters": 30},
+        # x, epig, grads = experiment.optimize_epig_gd(learning_rate=0.5, max_iters=1000)
+        results = experiment.run(
+            criterion_label="EIG",
+            epochs=5,
+            optimizer_params={"learning_rate": 1, "max_iters": 30, "x_init": None},
         )
-        experiment_results.plot_results()
-        plt.show()
-
-    def test_run_eig(self):
-        experiment = Experiment(
-            latent_true=self.latent_true,
-            latent_dim=self.latent_dim,
-            latent_var=self.latent_var,
-            latent_innovation=self.latent_innovation,
-            design_pool_num=self.design_pool_num,
-            design_mean=self.design_mean,
-            design_cov=self.design_cov,
-            measurement_error=self.measurement_cov,
-            plot_results=self.plot_results,
-        )
-        experiment_results = experiment.run_eig(
-            x_init=None,
-            iterations=50,
-            gd_params={
-                "learning_rate": 1,
-                "max_iters": 30,
-            },
-        )
-        experiment_results.plot_results()
         plt.show()
 
     def test_run(self):
@@ -210,33 +177,33 @@ class TestExperiment1:
         results.plot_comparison()
         plt.show()
 
-    def test_plot_crit_surface(self):
-        experiment = Experiment(
-            latent_true=self.latent_true,
-            latent_dim=self.latent_dim,
-            latent_var=self.latent_var,
-            latent_innovation=self.latent_innovation,
-            design_pool_num=self.design_pool_num,
-            design_mean=self.design_mean,
-            design_cov=self.design_cov,
-            measurement_error=self.measurement_cov,
-        )
-        experiment.plot_crit_surface()
+    # def test_plot_crit_surface(self):
+    #     experiment = Experiment(
+    #         latent_true=self.latent_true,
+    #         latent_dim=self.latent_dim,
+    #         latent_var=self.latent_var,
+    #         latent_innovation=self.latent_innovation,
+    #         design_pool_num=self.design_pool_num,
+    #         design_mean=self.design_mean,
+    #         design_cov=self.design_cov,
+    #         measurement_error=self.measurement_cov,
+    #     )
+    #     experiment.plot_crit_surface()
 
 
 class TestExperiment2:
     jax.config.update("jax_enable_x64", True)
-    latent_dim = 49
-    design_dim = 5
+    latent_dim = 6 + 6 + 3
+    design_dim = 2
     latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
-    latent_var = 0.1
+    latent_var = 1
     latent_innovation = 0
     measurement_cov = 0.1 * jnp.eye(1)
     design_pool_num = 100
     design_mean = jnp.zeros(design_dim)
     random_key = jax.random.PRNGKey(0)
-    eigs = jnp.full(design_dim, fill_value=0.5, dtype="float64")
-    eigs = eigs.at[:1].set(3)
+    eigs = jnp.full(design_dim, fill_value=0.01, dtype="float64")
+    eigs = eigs.at[:1].set(1.99)
     # eigs = latent_dim * eigs / eigs.sum()
     gd_params = {
         "learning_rate": 1,
@@ -256,11 +223,11 @@ class TestExperiment2:
     # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
     model = NeuralNetworkModel(
         input_dim=design_dim,
-        hidden_dim_0=4,
-        hidden_dim_1=4,
+        hidden_dim_0=2,
+        hidden_dim_1=2,
         key=random_key,
     )
-    plot_results = False
+    plot_results = True
 
     def test_epig(self):
         experiment = Experiment(
@@ -351,13 +318,15 @@ class TestExperiment2:
             design_mean=self.design_mean,
             design_cov=self.design_cov,
             measurement_error=self.measurement_cov,
+            plot_results=self.plot_results,
         )
         # x, epig, grads = experiment.optimize_epig_gd(learning_rate=0.5, max_iters=1000)
         results = experiment.run(
             criterion_label="EPIG",
-            epochs=30,
-            optimizer_params={"learning_rate": 1, "max_iters": 100, "x_init": None},
+            epochs=10,
+            optimizer_params={"learning_rate": 1, "max_iters": 30, "x_init": None},
         )
+        plt.show()
 
     def test_run(self):
         experiment = Experiment(
@@ -373,23 +342,9 @@ class TestExperiment2:
             plot_results=self.plot_results,
         )
         results = experiment.run_experiment(
-            experiments=["EPIG"],
+            experiments=["EPIG", "EIG", "MC", "RAND"],
             iterations=self.epochs,
             optimizer_params=self.gd_params,
         )
         results.plot_comparison()
         plt.show()
-
-    def test_plot_crit_surface(self):
-        experiment = Experiment(
-            model=self.model,
-            latent_true=self.latent_true,
-            latent_dim=self.latent_dim,
-            latent_var=self.latent_var,
-            latent_innovation=self.latent_innovation,
-            design_pool_num=self.design_pool_num,
-            design_mean=self.design_mean,
-            design_cov=self.design_cov,
-            measurement_error=self.measurement_cov,
-        )
-        experiment.plot_crit_surface()
