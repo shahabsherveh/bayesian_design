@@ -1,4 +1,5 @@
 from copy import deepcopy
+from flax import nnx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -7,7 +8,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from .ekf import EKF
-from .models import LinearModel
+from .models import LinearModel, Model
 
 
 class Experiment:
@@ -48,6 +49,7 @@ class Experiment:
         measurement_error,
         model=LinearModel(),
         plot_results=False,
+        pre_trained_model=False,
     ):
         """
         Initialize sequential experimental design framework.
@@ -65,7 +67,10 @@ class Experiment:
         """
         self.model = model
         self.state_init_prior = self.build_prior(
-            latent_dim=latent_dim, latent_variance=latent_var
+            latent_dim=latent_dim,
+            latent_variance=latent_var,
+            model=model,
+            pretrained_model=pre_trained_model,
         )
         self.design_dist = self.build_design_dist(
             design_cov=design_cov, design_mean=design_mean
@@ -75,12 +80,13 @@ class Experiment:
         self.measurement_error = measurement_error
         self.latent_innovation = latent_innovation
         self.ekf = EKF(
-            model=self.model,
+            model=model,
             state_prev=self.state_init_prior[0],
             state_cov_prev=self.state_init_prior[1],
             state_innovation=self.latent_innovation,
             measurement_error=self.measurement_error,
         )
+
         # self.prior_covs = jnp.array(
         #     [
         #         self.ekf.measurement_prior(x_pred.reshape(1, -1))[1][0, 0]
@@ -90,7 +96,9 @@ class Experiment:
         self.plot_results = plot_results
 
     @staticmethod
-    def build_prior(latent_dim, latent_variance):
+    def build_prior(
+        latent_dim, latent_variance, pretrained_model=False, model: Model | None = None
+    ):
         """
         Construct initial prior distribution over latent parameters.
 
@@ -106,7 +114,11 @@ class Experiment:
                 - cov: Diagonal covariance matrix of shape (latent_dim, latent_dim)
         """
         # mean = np.zeros((latent_dim, 1))
-        mean = np.ones((latent_dim, 1))
+        if not pretrained_model:
+            mean = np.ones((latent_dim, 1))
+        else:
+            model_state = nnx.state(model.flax_model)
+            mean = model.state_to_weights(model_state)
         # mean = np.random.normal(loc=0, scale=0.0000001, size=(latent_dim, 1))
         cov = np.eye(latent_dim) * latent_variance
         return mean, cov
@@ -172,20 +184,22 @@ class Experiment:
         ekf = self.ekf
         state_prev = ekf.state_prior[0]
         j_1 = ekf.model.jacobian(state_prev.reshape(-1, 1), x_1)
+        j_1_T = j_1.T if j_1.ndim == 2 else j_1.swapaxes(1, 2)
         j_0 = ekf.model.jacobian(state_prev.reshape(-1, 1), x)
+        j_0_T = j_0.T if j_0.ndim == 2 else j_0.swapaxes(1, 2)
         sigma = ekf.state_prior[1]
-        s_x = ekf.measurement_prior(x)[1]
+        s_x = ekf.measurement_prior(x)[1][:, None]
         posterior_covs_deficit = (
-            j_1 @ sigma @ (j_0.T @ jnp.linalg.inv(s_x) @ j_0) @ sigma @ j_1.T
+            jax.vmap(lambda j_0: j_1 @ sigma @ (j_0.T @ j_0) @ sigma @ j_1_T)(j_0) / s_x
         )
-        cov_0 = j_1 @ sigma @ j_1.T + ekf.measurement_error
+        cov_0 = j_1 @ sigma @ j_1_T + ekf.measurement_error
 
-        epig = -jnp.log(1 - (posterior_covs_deficit.diagonal() / cov_0.diagonal())) / 2
+        epig = -jnp.log(1 - (posterior_covs_deficit / cov_0[None, :])) / 2
 
         # Get the diagonal to ignore the cross-covariance of the design pool_values
         # Makes sense since in classical case the trace where calculated for the information matrix
         # epig = posterior_covs_deficit.diagonal() / cov_0.diagonal()
-        return epig.mean()
+        return epig.mean(axis=1)
 
     def calculate_mutual_information_mc(
         self,
@@ -310,14 +324,15 @@ class Experiment:
             Monte Carlo estimation. The optimal EIG design is proportional to
             the eigenvector with largest eigenvalue of the prior covariance.
         """
+        state_prior_mean = self.ekf.state_prior[0]
         state_prior_cov = self.ekf.state_prior[1]
         measurement_error = self.measurement_error
 
-        def J(x):
-            return self.model.jacobian(z=self.ekf.state_prior[0], x=x.reshape(-1, 1))
+        H = self.model.jacobian(state_prior_mean.reshape(-1, 1), x)
+        H_T = H.T if H.ndim == 2 else H.swapaxes(1, 2)
 
-        eig = jnp.log((J(x) @ state_prior_cov @ J(x).T / measurement_error) + 1) / 2
-        return eig[0, 0]
+        eig = jnp.log((H @ state_prior_cov @ H_T / measurement_error) + 1) / 2
+        return eig.squeeze()
 
     def calculate_random(self, x, key=jax.random.key(0), **kwargs):
         val = jax.random.uniform(
@@ -382,12 +397,11 @@ class Experiment:
             )
         # Initialize with design from pool that has highest criterion value
         elif x_init_type == "best_pool":
-            criterion_func_vectorized = jax.vmap(criterion_func)
             seeds = np.random.randint(
                 0, 10000, size=(self.design_space.shape[0],)
             )  # Random keys for randomness in criterion
             keys = jax.vmap(jax.random.key)(seeds)
-            pool_values = criterion_func_vectorized(x=self.design_space, key=keys)
+            pool_values = criterion_func(x=self.design_space.T, key=keys)
             best_index = jnp.argmax(pool_values)
             x = self.design_space[[best_index]].T
         # Randomly initialize from a normal distribution
@@ -495,12 +509,13 @@ class Experiment:
         progress_bar = tqdm(
             range(epochs), total=epochs, desc=f"Running {criterion_label} Experiment"
         )
-        fig, axes = plt.subplots(
-            figsize=(8, 12), nrows=epochs, ncols=2, sharex=True, sharey=True
-        )
-        axes[0, 0].set_title("EPIG Surface")
-        axes[0, 1].set_title("EIG Surface")
-        fig.suptitle(f"{criterion_label} optimization", fontsize=16)
+        if self.plot_results:
+            fig, axes = plt.subplots(
+                figsize=(8, 12), nrows=epochs, ncols=2, sharex=True, sharey=True
+            )
+            axes[0, 0].set_title("EPIG Surface")
+            axes[0, 1].set_title("EIG Surface")
+            fig.suptitle(f"{criterion_label} optimization", fontsize=16)
         for i in progress_bar:
             x_opt, crit_value, grads = self.optimize(
                 criterion_func=criterion_func,
@@ -563,12 +578,9 @@ class Experiment:
         sigma = self.ekf.state_prior[1]
         param_estimate = self.ekf.state_prior[0].reshape(-1, 1)
 
-        def j(x):
-            return self.model.jacobian(z=param_estimate, x=x[:, None])
-
-        pred_vars = jax.vmap(lambda x: j(x) @ sigma @ j(x).T + self.measurement_error)(
-            self.design_space
-        )
+        H = self.model.jacobian(param_estimate, self.design_space.T)
+        HT = H.T if H.ndim == 2 else H.swapaxes(1, 2)
+        pred_vars = H @ sigma @ HT + self.measurement_error
         rmse_pred = jnp.sqrt(jnp.mean(pred_vars))
         # if rmse_pred > 10:
         #     breakpoint()
@@ -626,8 +638,9 @@ class Experiment:
             independent EKF state evolution.
         """
         results = []
-        for experiment in experiments:
-            self_copy = deepcopy(self)
+        instances = [deepcopy(self) for _ in experiments]
+        for i, experiment in enumerate(experiments):
+            self_copy = instances[i]
             try:
                 r = self_copy.run(
                     criterion_label=experiment,
@@ -636,8 +649,9 @@ class Experiment:
                 )
                 results.append(r)
             except Exception as e:
-                print(f"Error running {experiment} experiment: {e}")
-                pass
+                raise (e)
+                print(e)
+
         return MultiExperimentResults(results)
 
     def plot_crit_surface(
@@ -855,7 +869,7 @@ class MultiExperimentResults:
         """
         fig, ax = plt.subplots(figsize=(12, 6))
         for result in self.experiment_results_list:
-            ax.plot(result.rmse_values_predictions, marker="o", label=result.crit_label)
+            ax.plot(result.rmse_values, marker="o", label=result.crit_label)
         ax.set_title("Comparison of RMSE over Iterations")
         ax.set_xlabel("Iteration")
         ax.set_ylabel("RMSE Value")

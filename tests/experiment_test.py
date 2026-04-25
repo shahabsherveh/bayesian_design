@@ -193,18 +193,18 @@ class TestExperiment1:
 
 class TestExperiment2:
     jax.config.update("jax_enable_x64", True)
-    latent_dim = 6 + 6 + 3
-    design_dim = 2
-    latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
-    latent_var = 1
+    latent_dim = 24 + 20 + 5
+    design_dim = 5
+    latent_true = 2 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
+    latent_var = 0.1
     latent_innovation = 0
     measurement_cov = 0.1 * jnp.eye(1)
     design_pool_num = 100
     design_mean = jnp.zeros(design_dim)
     random_key = jax.random.PRNGKey(0)
     eigs = jnp.full(design_dim, fill_value=0.01, dtype="float64")
-    eigs = eigs.at[:1].set(1.99)
-    # eigs = latent_dim * eigs / eigs.sum()
+    eigs = eigs.at[:2].set(1.99)
+    eigs = design_dim * eigs / eigs.sum()
     gd_params = {
         "learning_rate": 1,
         "max_iters": 0,
@@ -223,11 +223,14 @@ class TestExperiment2:
     # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
     model = NeuralNetworkModel(
         input_dim=design_dim,
-        hidden_dim_0=2,
-        hidden_dim_1=2,
+        hidden_dim_0=4,
+        hidden_dim_1=4,
         key=random_key,
     )
-    plot_results = True
+    x_train = stats.multivariate_normal(mean=design_mean, cov=design_cov).rvs(size=100)
+    y_train = model(latent_true, x_train.T)
+    loss_values = model.train(x_train, y_train, epochs=200, learning_rate=0.01)
+    plot_results = False
 
     def test_epig(self):
         experiment = Experiment(
@@ -340,9 +343,15 @@ class TestExperiment2:
             design_cov=self.design_cov,
             measurement_error=self.measurement_cov,
             plot_results=self.plot_results,
+            pre_trained_model=True,
         )
         results = experiment.run_experiment(
-            experiments=["EPIG", "EIG", "MC", "RAND"],
+            experiments=[
+                "EPIG",
+                "EIG",
+                # "MC",
+                # , "RAND"
+            ],
             iterations=self.epochs,
             optimizer_params=self.gd_params,
         )

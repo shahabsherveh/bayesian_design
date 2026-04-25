@@ -83,10 +83,11 @@ class EKF:
         """
         prior_mean = self.state_prior[0]
         prior_cov = self.state_prior[1]
-        H = self.model.jacobian(prior_mean, x)
+        H = self.model.jacobian(prior_mean, x).squeeze(0)
         S = H @ prior_cov @ H.T + self.measurement_error
         K = prior_cov @ H.T @ jnp.linalg.inv(S)
-        mean_post = prior_mean + K @ (measurement - self.model(prior_mean, x))
+        predict_meas = self.model(prior_mean, x).squeeze(0)
+        mean_post = prior_mean + K * (measurement - predict_meas)
         cov_post = (np.eye(len(self.state_prior[0])) - K @ H) @ self.state_prior[1] @ (
             np.eye(len(self.state_prior[0])) - K @ H
         ).T + K @ self.measurement_error @ K.T
@@ -103,8 +104,9 @@ class EKF:
             tuple: (mean, cov) of predicted measurement distribution
         """
         H = self.model.jacobian(self.state_prior[0], x)
+        HT = H.T if H.ndim == 2 else H.swapaxes(1, 2)
         mean_meas = self.model(self.state_prior[0], x)
-        cov_meas = H @ self.state_prior[1] @ H.T + self.measurement_error
+        cov_meas = H @ self.state_prior[1] @ HT + self.measurement_error
         return mean_meas, cov_meas
 
     def measurement_posterior(self, x_pred, x_obs, measurement):
@@ -121,8 +123,9 @@ class EKF:
         """
         state_post = self.get_state_posterior(measurement, x_obs)
         H = self.model.jacobian(state_post[0], x_pred)
+        HT = H.T if H.ndim == 2 else H.swapaxes(1, 2)
         mean_meas_post = self.model(state_post[0], x_pred)
-        cov_meas_post = H @ state_post[1] @ H.T + self.measurement_error
+        cov_meas_post = H @ state_post[1] @ HT + self.measurement_error
         return mean_meas_post, cov_meas_post
 
     def measurement_posterior_cov_estimate(self, x_pred, x_obs):
@@ -141,13 +144,14 @@ class EKF:
         """
         meas_prior_pred = self.measurement_prior(x_pred)
         meas_prior_obs = self.measurement_prior(x_obs)
-        cov_cross = (
-            self.model.jacobian(self.state_prior[0], x_pred)
-            @ self.state_prior[1]
-            @ self.model.jacobian(self.state_prior[0], x_obs).T
-        )
+        H_obs = self.model.jacobian(self.state_prior[0], x_obs)
+        H_obs_T = H_obs.T if H_obs.ndim == 2 else H_obs.swapaxes(1, 2)
+        H_pred = self.model.jacobian(self.state_prior[0], x_pred)
+        H_pred_T = H_pred.T if H_pred.ndim == 2 else H_pred.swapaxes(1, 2)
+        cov_cross = H_pred @ self.state_prior[1] @ H_obs_T
+        cov_cross_T = cov_cross.T if cov_cross.ndim == 2 else cov_cross.swapaxes(1, 2)
         K = cov_cross @ jnp.linalg.inv(meas_prior_obs[1])
-        cov_meas_pos = meas_prior_pred[1] - K @ cov_cross.T
+        cov_meas_pos = meas_prior_pred[1] - K @ cov_cross_T
         return cov_meas_pos
 
     def calculate_mutual_information(self, x_pred, x_obs):
@@ -189,6 +193,7 @@ class EKF:
         """
         state_prior = self.state_prior
         H = self.model.jacobian(state_prior[0], x)
+        HT = H.T if H.ndim == 2 else H.swapaxes(1, 2)
         mean_meas_prior = self.model(state_prior[0], x)
-        cov_meas_prior = H @ state_prior[1] @ H.T + self.measurement_error
+        cov_meas_prior = H @ state_prior[1] @ HT + self.measurement_error
         return mean_meas_prior, cov_meas_prior
