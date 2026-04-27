@@ -18,6 +18,9 @@ license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dynamic = ["dependencies"]
 
+[project.scripts]
+bed = "bed.cli.main:app"
+
 [project.urls]
 Homepage = "https://github.com/shahabsherveh/bayesian_design"
 [tool.setuptools.dynamic]
@@ -27,3 +30,4 @@ testpaths = [
   "tests"
 ]
 addopts ="--pdb --pdbcls=IPython.terminal.debugger:TerminalPdb -s"
+

@@ -201,7 +201,6 @@ class TestExperiment2:
     measurement_cov = 0.1 * jnp.eye(1)
     design_pool_num = 100
     design_mean = jnp.zeros(design_dim)
-    random_key = jax.random.PRNGKey(0)
     eigs = jnp.full(design_dim, fill_value=0.01, dtype="float64")
     eigs = eigs.at[:2].set(1.99)
     eigs = design_dim * eigs / eigs.sum()
@@ -221,6 +220,7 @@ class TestExperiment2:
         diag_tol=1e-6,
     )
     # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
+    random_key = jax.random.PRNGKey(0)
     model = NeuralNetworkModel(
         input_dim=design_dim,
         hidden_dim_0=4,

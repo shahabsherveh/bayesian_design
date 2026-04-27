@@ -11,4 +11,4 @@ cvxpy
 jax
 tqdm
 optax
-
+typer
