@@ -9,6 +9,8 @@ pytest
 ipdb
 cvxpy
 jax
+flax[all]
 tqdm
 optax
 typer
+tensorflow-datasets

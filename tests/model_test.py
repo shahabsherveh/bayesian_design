@@ -1,6 +1,7 @@
 import jax.numpy as jnp
-from bed.models import LinearModel, NeuralNetworkModel
+from bed.models import LinearModel, NNFLax, NeuralNetworkRegressor
 import jax
+from flax import nnx
 
 
 class TestLinearModel:
@@ -13,26 +14,25 @@ class TestLinearModel:
 
 class TestNeuralNetworkModel:
     x_train = jax.random.normal(
-        jax.random.PRNGKey(0), shape=(5, 200)
+        jax.random.PRNGKey(0), shape=(20, 1, 1, 5)
     )  # 5 data points, 1 feature
-    latent_true = jax.random.normal(
+    latent_true = 2 * jax.random.normal(
         jax.random.PRNGKey(1), shape=(49, 1)
     )  # 4 hidden units, 1 output
-    model = NeuralNetworkModel(
-        5, hidden_dim_0=4, hidden_dim_1=4, key=jax.random.PRNGKey(0)
-    )
+    flax_model = NNFLax(input_dim=5, hidden_dim_0=4, hidden_dim_1=4, rngs=nnx.Rngs(0))
+    model = NeuralNetworkRegressor(flax_model)
     y_train = model(latent_true, x_train)
 
     def test_call_1(self):
-        X = jnp.array([[1], [0], [0], [0], [0]])
+        X = jnp.array([1, 0, 0, 0, 0]).reshape(1, 1, 1, 5)
         z = jnp.zeros(shape=49)
         z.at[1].set(1)
         output = self.model(z, X)
-        assert output.shape == (1,)
-        assert output[0] == 0
+        assert output.shape == (1, 1, 1, 1)
+        assert output[0, 0, 0, 0] == 0
 
     def test_call_2(self):
-        X = jnp.array([[1], [0], [0], [0], [0]])
+        X = jnp.array([1, 0, 0, 0, 0]).reshape(1, 1, 1, 5)
         w_0 = jnp.zeros(shape=(4, 5))
         w_0 = w_0.at[0, 0].set(1)
         b_0 = jnp.zeros(shape=(4, 1))
@@ -47,20 +47,20 @@ class TestNeuralNetworkModel:
 
         z = jnp.concatenate(
             [
-                w_0.flatten(),
                 b_0.flatten(),
-                w_1.flatten(),
+                w_0.flatten(),
                 b_1.flatten(),
-                w_2.flatten(),
+                w_1.flatten(),
                 b_2.flatten(),
+                w_2.flatten(),
             ]
         )
         output = self.model(z, X)
-        assert output.shape == (1,)
-        assert output[0] == 1
+        assert output.shape == (1, 1, 1, 1)
+        assert output[0, 0, 0, 0] == 1
 
     def test_call_3(self):
-        X = jnp.array([[1], [1], [0], [0], [0]])
+        X = jnp.array([1, 1, 0, 0, 0]).reshape(1, 1, 1, 5)
         w_0 = jnp.zeros(shape=(5, 4))
         w_0 = w_0.at[0, 0].set(1)
         b_0 = jnp.zeros(shape=(4, 1))
@@ -77,20 +77,20 @@ class TestNeuralNetworkModel:
 
         z = jnp.concatenate(
             [
-                w_0.flatten(),
                 b_0.flatten(),
-                w_1.flatten(),
+                w_0.flatten(),
                 b_1.flatten(),
-                w_2.flatten(),
+                w_1.flatten(),
                 b_2.flatten(),
+                w_2.flatten(),
             ]
         )[:, None]
         output = self.model(z, X)
-        assert output.shape == (1,)
-        assert output[0] == 0
+        assert output.shape == (1, 1, 1, 1)
+        assert output[0, 0, 0, 0] == 0
 
     def test_jacobian_1(self):
-        X = jnp.array([[1], [0], [0], [0], [0]])
+        X = jnp.array([1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0]).reshape(2, 1, 1, 5)
         w_0 = jnp.zeros(shape=(4, 5))
         # w_0 = w_0.at[0, 0].set(1)
         b_0 = jnp.zeros(shape=(4, 1))
@@ -102,19 +102,19 @@ class TestNeuralNetworkModel:
         b_2 = jnp.zeros(shape=(1, 1))
         z = jnp.concatenate(
             [
-                w_0.flatten(),
                 b_0.flatten(),
-                w_1.flatten(),
+                w_0.flatten(),
                 b_1.flatten(),
-                w_2.flatten(),
+                w_1.flatten(),
                 b_2.flatten(),
+                w_2.flatten(),
             ]
         )[:, None]
         jacobian = self.model.jacobian(z, X)
-        assert jacobian.shape == (1, 1, 49)
+        assert jacobian.shape == (2, 1, 49)
 
     def test_jacobian_2(self):
-        X = jnp.array([[1, 0], [0, 1], [0, 0], [0, 0], [0, 0]])
+        X = jnp.array([[1, 0], [0, 1], [0, 0], [0, 0], [0, 0]]).T[:, None, None, :]
         w_0 = jnp.zeros(shape=(4, 5))
         w_0 = w_0.at[0, 0].set(1)
         b_0 = jnp.zeros(shape=(4, 1))
@@ -126,17 +126,16 @@ class TestNeuralNetworkModel:
         b_2 = jnp.zeros(shape=(1, 1))
         z = jnp.concatenate(
             [
-                w_0.flatten(),
                 b_0.flatten(),
-                w_1.flatten(),
+                w_0.flatten(),
                 b_1.flatten(),
-                w_2.flatten(),
+                w_1.flatten(),
                 b_2.flatten(),
+                w_2.flatten(),
             ]
         )[:, None]
         jacobian = self.model.jacobian(z, X)
         assert jacobian.shape == (2, 1, 49)
 
     def test_train(self):
-        loss_values = self.model.train(self.x_train, self.y_train, num_epochs=100)
-        breakpoint()
+        model = self.model.train(self.x_train, self.y_train, num_epochs=100)

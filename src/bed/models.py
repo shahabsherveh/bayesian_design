@@ -10,18 +10,19 @@ This module implements various models for optimal experimental design including:
 """
 
 from copy import deepcopy
+from functools import partial
+
 import cvxpy as cp
 import jax
 import jax.numpy as jnp
-from flax import nnx
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
+from scipy.stats import multivariate_normal
 import seaborn as sns
-from scipy.stats import (
-    multivariate_normal,
-)
 from tqdm import tqdm
+
+from flax import nnx
 
 
 class LinearGaussianModel:
@@ -844,29 +845,8 @@ class Model:
         gradients needed for EKF linearization.
     """
 
-    def jacobian(self, z, x, argnums=0):
-        """
-        Compute Jacobian of the measurement model using JAX autodiff.
-
-        Linearizes the model around the current state estimate, which is
-        required for the Extended Kalman Filter update equations.
-
-        Args:
-            z: Latent state vector of shape (d, 1) where d is state dimension
-            x: Design vector or matrix
-            argnums: Which argument to differentiate with respect to (0 for z, 1 for x)
-
-        Returns:
-            Jacobian matrix of shape (1, d) or (n_obs, d) depending on model
-
-        Note:
-            Uses JAX's automatic differentiation for exact gradients.
-        """
-        jac = jax.jacobian(self.__call__, argnums=argnums)
-        jac_value = jac(z, x)[0, ..., 0]
-        if jac_value.ndim == 1:
-            jac_value = jac_value[None, :]
-        return jac_value
+    def jacobian(self, z, x):
+        raise NotImplementedError("Subclasses must implement the jacobian method.")
 
     def train(self, x_train, y_train, **kwargs):
         """
@@ -881,7 +861,7 @@ class Model:
         """
         pass
 
-    def __call__(self, z, x):
+    def __call__(self, z, x, **kwargs):
         """
         Evaluate measurement model.
 
@@ -918,23 +898,121 @@ class LinearModel(Model):
         Returns:
             Measurements of shape (1, n)
         """
-        return z.T @ x
+        return z.T @ jnp.matrix_transpose(x)
 
 
-class NNFLax(nnx.Module):
+class FlaxModel(nnx.Module):
+    def __call__(self, x, rngs: nnx.Rngs | None = None):
+        raise NotImplementedError
+
+    def _validate_parameters(self, z):
+        raise NotImplementedError
+
+    def _validate_input(self, x):
+        raise NotImplementedError
+
+    def _create_weight_mapping(self):
+        mapping = {}
+        idx = 0
+        model_state = nnx.state(self)
+        for layer_name, layer in model_state.items():
+            for param_name, param in layer.items():
+                size = param.get_value().size
+                shape = param.shape
+                mapping[(layer_name, param_name)] = {
+                    "slice": (idx, idx + size),
+                    "shape": shape,
+                }
+                idx += size
+        return mapping, idx
+
+    def weights_to_state(self, z):
+        self._validate_parameters(z)
+        state_dict = {}
+        for weight_name, meta in self.weight_mapping.items():
+            slice = meta["slice"]
+            shape = meta["shape"]
+            w = z[slice[0] : slice[1]].reshape(shape)
+            if state_dict.get(weight_name[0]) is None:
+                state_dict[weight_name[0]] = {weight_name[1]: nnx.Param(w)}
+            else:
+                state_dict[weight_name[0]].update({weight_name[1]: nnx.Param(w)})
+        return nnx.State(state_dict)
+
+    def state_to_weights(self, state: nnx.State):
+        weights = jnp.zeros((self.weight_size, 1))
+        for weight_name, meta in self.weight_mapping.items():
+            w = state[weight_name[0]][weight_name[1]].get_value().flatten()[:, None]
+            weights = weights.at[meta["slice"][0] : meta["slice"][1]].set(w)
+        return weights
+
+    def _validate_parameters(self, z):
+        assert z.shape[0] == (self.weight_size), (
+            "Parameter vector z has incorrect size."
+        )
+
+    def loss(self, x, y, rngs: nnx.Rngs):
+        raise NotImplementedError("Subclasses must implement the loss method.")
+
+
+class DenseNN(FlaxModel):
     def __init__(self, input_dim, hidden_dim_0, hidden_dim_1, rngs: nnx.Rngs):
         self.linear_0 = nnx.Linear(input_dim, hidden_dim_0, rngs=rngs)
         self.linear_1 = nnx.Linear(hidden_dim_0, hidden_dim_1, rngs=rngs)
         self.output = nnx.Linear(hidden_dim_1, 1, rngs=rngs)
+        self.input_dim = input_dim
+        self.hidden_dim_0 = hidden_dim_0
+        self.hidden_dim_1 = hidden_dim_1
+        self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
-    def __call__(self, x):
+    def __call__(self, x, rngs: nnx.Rngs | None = None):
         l0 = nnx.relu(self.linear_0(x))
         l1 = nnx.relu(self.linear_1(l0))
         output = self.output(l1)
         return output
 
+    def _validate_input(self, x):
+        assert x.shape[0] == self.input_dim, "Input x has incorrect dimensionality."
 
-class NeuralNetworkModel(Model):
+
+class LinearNN(FlaxModel):
+    def __init__(self, input_dim, rngs: nnx.Rngs):
+        self.output = nnx.Linear(input_dim, 1, rngs=rngs)
+        self.weight_mapping, self.weight_size = self._create_weight_mapping()
+
+    def __call__(self, x, rngs: nnx.Rngs | None = None):
+        output = self.output(x)
+        return output
+
+
+class CNN(FlaxModel):
+    """A simple CNN model."""
+
+    def __init__(self, *, rngs: nnx.Rngs):
+        self.conv1 = nnx.Conv(1, 2, kernel_size=(3, 3), rngs=rngs)
+        # self.batch_norm1 = nnx.BatchNorm(8, rngs=rngs)
+        self.dropout1 = nnx.Dropout(rate=0.025)
+        self.conv2 = nnx.Conv(2, 2, kernel_size=(3, 3), rngs=rngs)
+        # self.batch_norm2 = nnx.BatchNorm(16, rngs=rngs)
+        self.avg_pool = partial(nnx.avg_pool, window_shape=(2, 2), strides=(2, 2))
+        self.output = nnx.Linear(7 * 7 * 2, 10, rngs=rngs)
+        # self.dropout2 = nnx.Dropout(rate=0.025)
+        # self.linear2 = nnx.Linear(128, 10, rngs=rngs)
+        self.weight_mapping, self.weight_size = self._create_weight_mapping()
+
+    def __call__(self, x, rngs: nnx.Rngs | None = None):
+        if x.ndim == 3:
+            flattened_shape = 1
+        else:
+            flattened_shape = x.shape[0]
+        conv1 = self.avg_pool(nnx.relu(self.dropout1(self.conv1(x), rngs=rngs)))
+        conv2 = self.avg_pool(nnx.relu(self.conv2(conv1)))
+        conv2_flatten = conv2.reshape(flattened_shape, 1, 1, -1)  # flatten
+        output = self.output(conv2_flatten)
+        return output
+
+
+class NeuralNetworkBase(Model):
     """
     Nonlinear measurement model implemented as a simple feedforward neural network.
     This model captures complex relationships between latent states and designs,
@@ -947,7 +1025,7 @@ class NeuralNetworkModel(Model):
         b2: Bias vector for second layer
     """
 
-    def __init__(self, input_dim, hidden_dim_0, hidden_dim_1, key=None):
+    def __init__(self, model: FlaxModel):
         """
         Initialize neural network parameters.
         Args:
@@ -955,60 +1033,13 @@ class NeuralNetworkModel(Model):
             hidden_dim: Number of hidden units in the network
             key: JAX random key for reproducibility (optional)
         """
-        self.input_dim = input_dim
-        self.hidden_dim_0 = hidden_dim_0
-        self.hidden_dim_1 = hidden_dim_1
-        self.flax_model = NNFLax(
-            input_dim, hidden_dim_0, hidden_dim_1, rngs=nnx.Rngs(key)
-        )
+        self.flax_model = model
+        self.graphdef, _ = nnx.split(self.flax_model)
 
-    def _validate_parameters(self, z):
-        assert z.shape[0] == (
-            self.input_dim * self.hidden_dim_0
-            + self.hidden_dim_0
-            + self.hidden_dim_0 * self.hidden_dim_1
-            + self.hidden_dim_1
-            + self.hidden_dim_1 * 1
-            + 1
-        ), "Parameter vector z has incorrect size."
+    def build_loss_fn(self, x_train, y_train):
+        return lambda x: None
 
-    def _validate_input(self, x):
-        assert x.shape[0] == self.input_dim, "Input x has incorrect dimensionality."
-
-    def weights_to_state(self, z):
-        self._validate_parameters(z)
-        w_0_slice = jnp.arange(self.input_dim * self.hidden_dim_0)
-        b_0_slice = jnp.arange(w_0_slice[-1] + 1, w_0_slice[-1] + 1 + self.hidden_dim_0)
-        w_1_slice = jnp.arange(
-            b_0_slice[-1] + 1, b_0_slice[-1] + 1 + self.hidden_dim_0 * self.hidden_dim_1
-        )
-        b_1_slice = jnp.arange(w_1_slice[-1] + 1, w_1_slice[-1] + 1 + self.hidden_dim_1)
-        w_2_slice = jnp.arange(b_1_slice[-1] + 1, b_1_slice[-1] + 1 + self.hidden_dim_1)
-        b_2_slice = jnp.arange(w_2_slice[-1] + 1, w_2_slice[-1] + 1 + 1)
-        w_0 = z[w_0_slice].reshape(self.input_dim, self.hidden_dim_0)
-        b_0 = z[b_0_slice].reshape(self.hidden_dim_0, 1)
-        w_1 = z[w_1_slice].reshape(self.hidden_dim_0, self.hidden_dim_1)
-        b_1 = z[b_1_slice].reshape(self.hidden_dim_1, 1)
-        w_2 = z[w_2_slice].reshape(self.hidden_dim_1, 1)
-        b_2 = z[b_2_slice].reshape(1, 1)
-        state = {
-            "linear_0": {"kernel": nnx.Param(w_0), "bias": nnx.Param(b_0)},
-            "linear_1": {"kernel": nnx.Param(w_1), "bias": nnx.Param(b_1)},
-            "output": {"kernel": nnx.Param(w_2), "bias": nnx.Param(b_2)},
-        }
-        return nnx.State(state)
-
-    def state_to_weights(self, state):
-        w_0 = state.linear_0.kernel.value.flatten()
-        b_0 = state.linear_0.bias.value.flatten()
-        w_1 = state.linear_1.kernel.value.flatten()
-        b_1 = state.linear_1.bias.value.flatten()
-        w_2 = state.output.kernel.value.flatten()
-        b_2 = state.output.bias.value.flatten()
-        return jnp.concatenate([w_0, b_0, w_1, b_1, w_2, b_2])[:, None]
-
-    @nnx.vmap(in_axes=(None, None, 1), out_axes=0)
-    def __call__(self, z, x):
+    def __call__(self, z, x, **kwargs):
         """
         Compute nonlinear measurement using a feedforward neural network.
         Args:
@@ -1017,41 +1048,36 @@ class NeuralNetworkModel(Model):
         Returns:
             Measurements of shape (1, n) after passing through the network
         """
-        self._validate_input(x)
         model = deepcopy(self.flax_model)
         if z is not None:
-            state = self.weights_to_state(z)
+            state = model.weights_to_state(z)
+            # model = nnx.merge(self.graphdef, state)
             nnx.update(model, state)
         output = model(x)  # Transpose x to match expected input shape
         return output
 
-    @nnx.vmap(in_axes=(None, None, 1, None), out_axes=0)
-    def jacobian(self, z, x, argnums=0):
-        state = self.weights_to_state(z)
+    def jacobian(self, z, x):
         model = deepcopy(self.flax_model)
+        state = model.weights_to_state(z)
         nnx.update(model, state)
-        grad = nnx.grad(lambda model, x: model(x)[0])(model, x)
+        grad_fn = [
+            nnx.vmap(
+                nnx.grad(lambda model, x: model(x)[0, 0, i]),
+                in_axes=(None, 0),
+            )
+            for i in range(model.weight_mapping[("output", "bias")]["shape"][0])
+        ]
+        grad = [g_fn(model, x) for g_fn in grad_fn]
+        grad_weights = [
+            nnx.vmap(lambda gr: model.state_to_weights(gr).T)(g) for g in grad
+        ]
 
-        w_0_grad = grad.linear_0.kernel.value
-        b_0_grad = grad.linear_0.bias.value
-        w_1_grad = grad.linear_1.kernel.value
-        b_1_grad = grad.linear_1.bias.value
-        w_2_grad = grad.output.kernel.value
-        b_2_grad = grad.output.bias.value
+        jac_value = jnp.concatenate(grad_weights, axis=1)
+        return jac_value
 
-        jac_value = jnp.concatenate(
-            [
-                w_0_grad.flatten(),
-                b_0_grad.flatten(),
-                w_1_grad.flatten(),
-                b_1_grad.flatten(),
-                w_2_grad.flatten(),
-                b_2_grad.flatten(),
-            ]
-        )
-        return jac_value[None, :]
-
-    def train(self, x_train, y_train, epochs=100, learning_rate=0.01, **kwargs):
+    def train(
+        self, x_train, y_train, rngs: nnx.Rngs, epochs=200, learning_rate=0.1, **kwargs
+    ):
         """
         Train the neural network model using mean squared error loss.
 
@@ -1065,21 +1091,40 @@ class NeuralNetworkModel(Model):
             regularization.
         """
         model = self.flax_model
-
-        def loss_fn(model):
-            predictions = model(x_train)  # Transpose to match expected input shape
-            loss = jnp.mean((predictions - y_train) ** 2)
-            return loss
+        loss_fn = self.build_loss_fn(x_train, y_train)
 
         optimizer = nnx.optimizer.Optimizer(
             model, tx=optax.adamw(learning_rate=learning_rate), wrt=nnx.Param
         )
-        loss_values = jnp.array([])
         pbar = tqdm(range(epochs), desc="Training Neural Network Model")
         for epoch in pbar:
             grad_fn = nnx.value_and_grad(loss_fn)
-            loss, grads = grad_fn(model)
+            loss, grads = grad_fn(model, rngs)
             optimizer.update(model, grads)
             pbar.set_postfix({"loss": loss})
 
-        return loss_values
+        self.mse = loss
+
+        return self
+
+
+class NeuralNetworkClassifier(NeuralNetworkBase):
+    def build_loss_fn(self, x_train, y_train):
+        def loss_fn(model, rngs: nnx.Rngs):
+            logits = model(x_train, rngs)
+            loss = optax.softmax_cross_entropy(
+                logits=logits.squeeze(), labels=y_train.squeeze()
+            ).mean()
+            return loss
+
+        return loss_fn
+
+
+class NeuralNetworkRegressor(NeuralNetworkBase):
+    def build_loss_fn(self, x_train, y_train):
+        def loss_fn(model, rngs: nnx.Rngs):
+            predictions = model(x_train, rngs).squeeze()
+            loss = jnp.mean((predictions - y_train.squeeze()) ** 2)
+            return loss
+
+        return loss_fn
