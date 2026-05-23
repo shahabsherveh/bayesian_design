@@ -14,13 +14,25 @@ class Data:
         y_train: jnp.ndarray,
         x_test: jnp.ndarray,
         y_test: jnp.ndarray,
+        x_val: jnp.ndarray | None = None,
+        y_val: jnp.ndarray | None = None,
         underlying_model: None | FlaxModel = None,
+        measurement_noise_std: float | None = None,
     ):
         self.x_train = x_train
         self.y_train = y_train
         self.x_test = x_test
         self.y_test = y_test
+        self.x_val = (
+            x_val if x_val is not None else jnp.concatenate([x_train, x_test], axis=0)
+        )
+        self.y_val = (
+            y_val if x_val is not None else jnp.concatenate([y_train, y_test], axis=0)
+        )
         self.underlying_model = underlying_model
+        self.measurement_noise_std = (
+            measurement_noise_std if measurement_noise_std is not None else 0.0
+        )
 
     @classmethod
     def from_npy(
@@ -56,6 +68,10 @@ class Data:
                 obs = self.y_test[index - len(self.x_train)]
         else:
             obs = self.underlying_model(index, rngs=None).squeeze()
+            noise = self.measurement_noise_std * jax.random.normal(
+                shape=obs.shape, key=jax.random.PRNGKey(0)
+            )
+            obs = (obs + noise).squeeze()
 
         return obs
 
@@ -69,20 +85,24 @@ def create_synthetic_data(
     embedding_noise_std: float = 0.1,
     measurement_noise_std: float = 0.1,
     output_dim: int = 1,
+    key=jax.random.PRNGKey(0),
 ) -> Data:
-    key = jax.random.PRNGKey(0)
     eigs = jnp.full(fill_value=embedding_noise_std, shape=input_dim)
     eigs = eigs.at[:embedding_dim].set(
         (input_dim / embedding_dim)
         - (embedding_noise_std * (input_dim - embedding_dim) / embedding_dim)
     )
     eigs = eigs.at[embedding_dim:].set(embedding_noise_std)
-    design_cov = stats.random_correlation.rvs(
-        eigs=eigs,
-        random_state=1,
-        tol=1e-6,
-        diag_tol=1e-6,
-    )
+    if input_dim != 1:
+        design_cov = stats.random_correlation.rvs(
+            eigs=eigs,
+            random_state=1,
+            tol=1e-6,
+            diag_tol=1e-6,
+        )
+    else:
+        design_cov = jnp.array([[eigs[0]]])
+
     design_mean = jnp.zeros(input_dim)
 
     x_train = jax.random.multivariate_normal(
@@ -108,6 +128,115 @@ def create_synthetic_data(
 
     y_train = model(x_train, rngs=None)
     y_test = model(x_test, rngs=None)
+    return Data(x_train, y_train, x_test, y_test, underlying_model=model)
+
+
+def create_synthetic_normal_with_outliers_data_1D(
+    model,
+    var,
+    mean,
+    outliers,
+    num_train: int,
+    num_test: int,
+    key=jax.random.PRNGKey(0),
+) -> Data:
+    x_train = jax.random.normal(shape=(num_train,), key=key) * var + mean
+    x_test = jax.random.normal(shape=(num_test,), key=key) * var + mean
+    x_test = jnp.append(x_test, outliers)
+    y_train = model(x_train, rngs=None)
+    y_test = model(x_test, rngs=None)
+    return Data(
+        x_train=x_train[:, None, None, None],
+        x_test=x_test[:, None, None, None],
+        y_train=y_train,
+        y_test=y_test,
+    )
+
+
+def create_synthetic_normal_mixture_data_1D(
+    model,
+    vars: jnp.ndarray,
+    means: jnp.ndarray,
+    num_train: int,
+    num_test: int,
+    num_val: int = 0,
+    measurement_noise_std: float = 0.1,
+    extra_points: jnp.ndarray | None = None,
+    key=jax.random.PRNGKey(0),
+) -> Data:
+
+    design_cov = jnp.diag(vars)
+    x_train = jax.random.multivariate_normal(
+        mean=means,
+        cov=design_cov,
+        shape=(num_train,),
+        key=key,
+        method="svd",
+    ).flatten()[:, None, None, None]
+    x_test = jax.random.multivariate_normal(
+        mean=means,
+        cov=design_cov,
+        shape=(num_test,),
+        key=key,
+        method="svd",
+    ).flatten()[:, None, None, None]
+    if extra_points is not None:
+        x_test = jnp.append(x_test, extra_points[:, None, None, None], axis=0)
+    if num_val > 0:
+        x_val = jax.random.multivariate_normal(
+            mean=means,
+            cov=design_cov,
+            shape=(num_val,),
+            key=key,
+            method="svd",
+        ).flatten()[:, None, None, None]
+        y_val = model(x_val, rngs=None)
+    else:
+        x_val = None
+        y_val = None
+
+    noise_train = measurement_noise_std * jax.random.normal(
+        shape=(len(vars) * num_train, 1, 1, 1), key=key
+    )
+    noise_test = measurement_noise_std * jax.random.normal(
+        shape=(len(vars) * num_test + len(extra_points), 1, 1, 1), key=key
+    )
+    y_train = model(x_train, rngs=None) + noise_train
+    y_test = model(x_test, rngs=None) + noise_test
+    return Data(
+        x_train,
+        y_train,
+        x_test,
+        y_test,
+        x_val,
+        y_val,
+        underlying_model=model,
+        measurement_noise_std=measurement_noise_std,
+    )
+
+
+def create_synthetic_fatailed_data_1D(
+    model,
+    df,
+    mean,
+    num_train: int,
+    num_test: int,
+    measurement_noise_std: float = 0.1,
+    key=jax.random.PRNGKey(0),
+) -> Data:
+    x_train = (
+        jax.random.t(df=df, shape=(num_train,), key=key)[:, None, None, None] - mean
+    )
+    x_test = jax.random.t(df=df, shape=(num_test,), key=key)[:, None, None, None] - mean
+
+    noise_train = measurement_noise_std * jax.random.normal(
+        shape=(num_train, 1, 1, 1), key=key
+    )
+    noise_test = measurement_noise_std * jax.random.normal(
+        shape=(num_test, 1, 1, 1), key=key
+    )
+    y_train = model(x_train, rngs=None) + noise_train
+    y_test = model(x_test, rngs=None) + noise_test
     return Data(x_train, y_train, x_test, y_test, underlying_model=model)
 
 

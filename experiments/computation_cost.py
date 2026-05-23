@@ -26,12 +26,14 @@ model_true = deepcopy(model)
 state_true = model_true.weights_to_state(latent_true)
 nnx.update(model_true, state_true)
 plot_results = False
-pbar = trange(1000, 14000, 1000)
+pbar = trange(1, 5)
 epig_times = []
 eig_times = []
 mc_times = []
 rand_times = []
-for num_designs in pbar:
+number_of_runs = 5
+for i in pbar:
+    num_designs = 10 ** (i)
     num_test = num_designs // 2
     num_train = num_designs // 2
     data = create_synthetic_data(
@@ -54,7 +56,7 @@ for num_designs in pbar:
         pre_train_model=False,
     )
     x = experiment.design_space[:1]
-    epig = timeit.timeit(lambda: experiment.calculate_epig(x), number=1)
+    epig = timeit.timeit(lambda: experiment.calculate_epig(x), number=number_of_runs)
     experiment = Experiment(
         model=NeuralNetworkRegressor(model),
         data=data,
@@ -64,7 +66,7 @@ for num_designs in pbar:
         plot_inter_results=False,
         pre_train_model=False,
     )
-    eig = timeit.timeit(lambda: experiment.calculate_eig(x), number=1)
+    eig = timeit.timeit(lambda: experiment.calculate_eig(x), number=number_of_runs)
     experiment = Experiment(
         model=NeuralNetworkRegressor(model),
         data=data,
@@ -74,7 +76,7 @@ for num_designs in pbar:
         plot_inter_results=False,
         pre_train_model=False,
     )
-    mc = timeit.timeit(lambda: experiment.calculate_epig_mc(x), number=1)
+    mc = timeit.timeit(lambda: experiment.calculate_epig_mc(x), number=number_of_runs)
     experiment = Experiment(
         model=NeuralNetworkRegressor(model),
         data=data,
@@ -84,18 +86,39 @@ for num_designs in pbar:
         plot_inter_results=False,
         pre_train_model=False,
     )
-    rand = timeit.timeit(lambda: normal(), number=1)
+    rand = timeit.timeit(lambda: normal(), number=number_of_runs)
     epig_times.append(epig)
     eig_times.append(eig)
     mc_times.append(mc)
     rand_times.append(rand)
 
 fig, ax = plt.subplots()
+x_axis = 10 ** (jnp.array(pbar.iterable))
 ax.set_title("Computation Performance")
-ax.plot(pbar.iterable, epig_times, label="EPIG")
-ax.plot(pbar.iterable, eig_times, label="EIG")
-ax.plot(pbar.iterable, mc_times, label="MC")
-ax.plot(pbar.iterable, rand_times, label="RAND")
+ax.semilogy(
+    x_axis,
+    epig_times,
+    label="EPIG",
+    marker="o",
+)
+ax.semilogy(
+    x_axis,
+    eig_times,
+    label="EIG",
+    marker="o",
+)
+ax.semilogy(
+    x_axis,
+    mc_times,
+    label="MC",
+    marker="o",
+)
+ax.semilogy(
+    x_axis,
+    rand_times,
+    label="RAND",
+    marker="o",
+)
 ax.set_xlabel("Number of Training Samples")
 ax.set_ylabel("Computation Time (s)")
 plt.legend()

@@ -9,12 +9,12 @@ from copy import deepcopy
 
 
 jax.config.update("jax_enable_x64", True)
-design_dim = 10
+design_dim = 20
 latent_dim = design_dim + 1
 latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
 latent_var = 0.1
 latent_innovation = 0
-measurement_cov = 0.25 * jnp.eye(1)
+measurement_cov = 0.01 * jnp.eye(1)
 # epochs = int(10 * latent_dim)
 epochs = 50
 # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
@@ -23,16 +23,16 @@ model = LinearNN(input_dim=design_dim, rngs=nnx.Rngs(0))
 model_true = deepcopy(model)
 state_true = model_true.weights_to_state(latent_true)
 nnx.update(model_true, state_true)
-plot_results = False
-num_train = 50
-num_test = 150
+plot_results = True
+num_train = 20
+num_test = 80
 training_kwargs = {"learning_rate": 0.01, "epochs": 100, "rngs": nnx.Rngs(0)}
 data = create_synthetic_data(
     model_true,
     num_train,
     num_test,
     design_dim,
-    embedding_dim=5,
+    embedding_dim=10,
     embedding_noise_std=0.0001,
     measurement_noise_std=jnp.sqrt(measurement_cov[0, 0]),
 )
@@ -50,12 +50,13 @@ results = experiment.run_experiment(
     experiments=[
         "EPIG",
         "EIG",
-        "MC",
+        "EPIG-MC",
         "RAND",
     ],
     iterations=epochs,
-    optimizer_method="grid_search",
-    optimizer_params={"resolution": 5},
+    optimizer_method="brute_force",
+    # optimizer_method="grid_search",
+    optimizer_params={"num_samples": 400},
 )
 results.plot_comparison()
 plt.show()

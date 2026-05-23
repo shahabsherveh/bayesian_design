@@ -12,11 +12,11 @@ jax.config.update("jax_enable_x64", True)
 design_dim = 2
 latent_dim = design_dim + 1
 latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
-latent_var = 0.1
+latent_var = 1
 latent_innovation = 0
-measurement_cov = 9 * jnp.eye(1)
+measurement_cov = 0.16 * jnp.eye(1)
 # epochs = int(10 * latent_dim)
-epochs = 10
+epochs = 5
 design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
 random_key = jax.random.PRNGKey(0)
 model = LinearNN(input_dim=design_dim, rngs=nnx.Rngs(0))
@@ -33,7 +33,7 @@ data = create_synthetic_data(
     num_test,
     design_dim,
     embedding_dim=1,
-    embedding_noise_std=0.01,
+    embedding_noise_std=0.001,
     measurement_noise_std=jnp.sqrt(measurement_cov[0, 0]),
 )
 experiment = Experiment(
@@ -50,12 +50,12 @@ results = experiment.run_experiment(
     experiments=[
         "EPIG",
         "EIG",
-        "MC",
+        "EPIG-MC",
         "RAND",
     ],
     iterations=epochs,
     optimizer_method="grid_search",
-    optimizer_params={"lr": 2, "max_iters": 100},
+    optimizer_params={"lr": 2, "max_iters": 100, "num_samples": 200},
 )
 results.plot_comparison()
 plt.show()

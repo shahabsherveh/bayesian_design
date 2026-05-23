@@ -17,6 +17,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.random import normal
 import optax
 from scipy.stats import multivariate_normal
 import seaborn as sns
@@ -956,19 +957,24 @@ class FlaxModel(nnx.Module):
 
 
 class DenseNN(FlaxModel):
-    def __init__(self, input_dim, hidden_dim_0, hidden_dim_1, rngs: nnx.Rngs):
+    def __init__(
+        self, input_dim, hidden_dim_0, hidden_dim_1, hidden_dim_2, rngs: nnx.Rngs
+    ):
         self.linear_0 = nnx.Linear(input_dim, hidden_dim_0, rngs=rngs)
         self.linear_1 = nnx.Linear(hidden_dim_0, hidden_dim_1, rngs=rngs)
-        self.output = nnx.Linear(hidden_dim_1, 1, rngs=rngs)
+        self.linear_2 = nnx.Linear(hidden_dim_1, hidden_dim_2, rngs=rngs)
+        self.output = nnx.Linear(hidden_dim_2, 1, rngs=rngs)
         self.input_dim = input_dim
         self.hidden_dim_0 = hidden_dim_0
         self.hidden_dim_1 = hidden_dim_1
+        self.hidden_dim_2 = hidden_dim_2
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
-        l0 = nnx.relu(self.linear_0(x))
-        l1 = nnx.relu(self.linear_1(l0))
-        output = self.output(l1)
+        l0 = nnx.gelu(self.linear_0(x))
+        l1 = nnx.gelu(self.linear_1(l0))
+        l2 = nnx.gelu(self.linear_2(l1))
+        output = self.output(l2)
         return output
 
     def _validate_input(self, x):
@@ -979,6 +985,24 @@ class LinearNN(FlaxModel):
     def __init__(self, input_dim, rngs: nnx.Rngs):
         self.output = nnx.Linear(input_dim, 1, rngs=rngs)
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
+
+    def __call__(self, x, rngs: nnx.Rngs | None = None):
+        output = self.output(x)
+        return output
+
+
+class Sinus(FlaxModel):
+    def __init__(self, input_dim, freq, amp=1, noise_std=0.1):
+        self.output = lambda x: amp * jnp.sin(2 * jnp.pi * freq * x)
+
+    def __call__(self, x, rngs: nnx.Rngs | None = None):
+        output = self.output(x)
+        return output
+
+
+class SinusInverse(FlaxModel):
+    def __init__(self, input_dim, freq_init, amp=1, noise_std=0.1):
+        self.output = lambda x: amp * (jnp.sin(2 * jnp.pi * freq_init / x))
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
         output = self.output(x)
