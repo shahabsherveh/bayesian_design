@@ -36,16 +36,37 @@ data = create_synthetic_data(
     embedding_noise_std=0.001,
     measurement_noise_std=jnp.sqrt(measurement_cov[0, 0]),
 )
+model_state = nnx.state(model)
+mean = model.state_to_weights(model_state)
+latent_dim = mean.shape[0]
+latent_bias_var = 1
+latent_kernel_var = 2.0
+latent_cov = jnp.zeros((latent_dim,))
+for layer, layer_meta in model.weight_mapping.items():
+    s = layer_meta["slice"]
+    shape = layer_meta["shape"]
+    var = latent_kernel_var / shape[0]
+    fan_in = shape[0]
+    fan_out = shape[1] if len(shape) > 1 else 1
+    fan_avg = (fan_in + fan_out) / 2
+    var = 2 / fan_in
+    if layer[1] == "bias":
+        var = latent_bias_var
+    latent_cov = latent_cov.at[s[0] : s[1]].set(var)
+latent_cov = jnp.diag(latent_cov)
+
+
 experiment = Experiment(
     model=NeuralNetworkRegressor(model),
     data=data,
-    latent_var=latent_var,
+    latent_cov=latent_cov,
     latent_innovation=latent_innovation,
     measurement_error=measurement_cov,
-    plot_inter_results=plot_results,
+    plot_inter_results=True,
     pre_train_model=False,
     training_kwargs=training_kwargs,
 )
+
 results = experiment.run_experiment(
     experiments=[
         "EPIG",

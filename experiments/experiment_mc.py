@@ -15,7 +15,7 @@ jax.config.update("jax_enable_x64", True)
 design_dim = 10
 latent_dim = design_dim + 1
 latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
-latent_var = 0.1
+latent_var = 0.1 * jnp.eye(latent_dim)
 latent_innovation = 0
 measurement_cov = 0.01 * jnp.eye(1)
 # epochs = int(10 * latent_dim)
@@ -42,7 +42,7 @@ data = create_synthetic_data(
 experiment = Experiment(
     model=NeuralNetworkRegressor(model),
     data=data,
-    latent_var=latent_var,
+    latent_cov=latent_var,
     latent_innovation=latent_innovation,
     measurement_error=measurement_cov,
     plot_inter_results=plot_results,
@@ -69,14 +69,30 @@ try:
 except KeyboardInterrupt:
     pass
 epig_samples = jnp.array(epig_mc_list)
-q = [0.0, 0.25, 0.5, 0.75, 1.0]
-fig, ax = plt.subplots(figsize=(13, 6))
-for i, q_i in enumerate(q):
-    quantile = jnp.quantile(epig_samples, q=q_i, axis=1)
-    ax.plot(range(100, 10100, 100), quantile, label=f"Quantile {q_i}")
-ax.axhline(epig, color="red", linestyle="--", label="True EPIG")
+q = jnp.array([0.25, 0.5, 0.75])
+fig, ax = plt.subplots(figsize=(90 / 25.4, 100 / 25.4))
+fig.subplots_adjust(bottom=0.15)
+quantile = jnp.quantile(epig_samples, q=q, axis=1)
+# ax.plot(range(100, 10100, 100), quantile[1], color="black", label="median")
+ax.plot(
+    range(100, 10100, 100),
+    epig_samples.mean(axis=1),
+    color="tab:green",
+    label="mean",
+    # linestyle="--",
+)
+ax.fill_between(
+    range(100, 10100, 100),
+    quantile[0].squeeze(),
+    quantile[2].squeeze(),
+    color="tab:green",
+    alpha=0.3,
+    label="25th-75th Percentile",
+)
+ax.axhline(epig, color="tab:blue", linestyle="-", label="EPIG")
 ax.set_xlabel("Number of Latent Samples")
 plt.ylabel("EPIG Estimate")
-plt.title("EPIG Monte Carlo Estimates vs True EPIG")
+ax.set_ylim(-0.5, None)
+# plt.title("EPIG Monte Carlo Estimates vs True EPIG")
 plt.legend()
 plt.show()

@@ -60,7 +60,7 @@ class Data:
         jnp.save(x_test_path, self.x_test)
         jnp.save(y_test_path, self.y_test)
 
-    def observe(self, index):
+    def observe(self, index, has_noise: bool = True) -> jnp.ndarray:
         if jnp.isdtype(index.dtype, "int"):
             if index < len(self.x_train):
                 obs = self.y_train[index]
@@ -68,9 +68,12 @@ class Data:
                 obs = self.y_test[index - len(self.x_train)]
         else:
             obs = self.underlying_model(index, rngs=None).squeeze()
-            noise = self.measurement_noise_std * jax.random.normal(
-                shape=obs.shape, key=jax.random.PRNGKey(0)
-            )
+            if has_noise:
+                noise = self.measurement_noise_std * jax.random.normal(
+                    shape=obs.shape, key=jax.random.PRNGKey(0)
+                )
+            else:
+                noise = 0.0
             obs = (obs + noise).squeeze()
 
         return obs
@@ -86,6 +89,7 @@ def create_synthetic_data(
     measurement_noise_std: float = 0.1,
     output_dim: int = 1,
     key=jax.random.PRNGKey(0),
+    var=1.0,
 ) -> Data:
     eigs = jnp.full(fill_value=embedding_noise_std, shape=input_dim)
     eigs = eigs.at[:embedding_dim].set(
@@ -93,12 +97,20 @@ def create_synthetic_data(
         - (embedding_noise_std * (input_dim - embedding_dim) / embedding_dim)
     )
     eigs = eigs.at[embedding_dim:].set(embedding_noise_std)
+    cov = jnp.ones_like(eigs)
+    cov = cov.at[:embedding_dim].set(var**0.5)
+    cov = jnp.diag(cov)
+
     if input_dim != 1:
-        design_cov = stats.random_correlation.rvs(
-            eigs=eigs,
-            random_state=1,
-            tol=1e-6,
-            diag_tol=1e-6,
+        design_cov = (
+            cov
+            @ stats.random_correlation.rvs(
+                eigs=eigs,
+                random_state=1,
+                tol=1e-6,
+                diag_tol=1e-6,
+            )
+            @ cov
         )
     else:
         design_cov = jnp.array([[eigs[0]]])
@@ -162,26 +174,27 @@ def create_synthetic_normal_mixture_data_1D(
     num_val: int = 0,
     measurement_noise_std: float = 0.1,
     extra_points: jnp.ndarray | None = None,
-    key=jax.random.PRNGKey(0),
+    key=jax.random.key(0),
+    skew: float = 0.0,
 ) -> Data:
 
     design_cov = jnp.diag(vars)
-    x_train = jax.random.multivariate_normal(
-        mean=means,
-        cov=design_cov,
-        shape=(num_train,),
-        key=key,
-        method="svd",
-    ).flatten()[:, None, None, None]
-    x_test = jax.random.multivariate_normal(
-        mean=means,
-        cov=design_cov,
-        shape=(num_test,),
-        key=key,
-        method="svd",
-    ).flatten()[:, None, None, None]
+    x_train = jax.random.normal(shape=(num_train,), key=key) * vars[0] + means[0]
+    for i in range(1, len(vars)):
+        x_train = jnp.append(
+            x_train,
+            jax.random.normal(shape=(num_train,), key=key) * vars[i] + means[i],
+        )
+    x_train = x_train[:, None, None, None]
+    x_test = jax.random.normal(shape=(num_test,), key=key) * vars[0] + means[0]
+    for i in range(1, len(vars)):
+        x_test = jnp.append(
+            x_test,
+            jax.random.normal(shape=(num_test,), key=key) * vars[i] + means[i],
+        )
+    x_test = x_test[:, None, None, None]
     if extra_points is not None:
-        x_test = jnp.append(x_test, extra_points[:, None, None, None], axis=0)
+        x_train = jnp.append(x_train, extra_points[:, None, None, None], axis=0)
     if num_val > 0:
         x_val = jax.random.multivariate_normal(
             mean=means,
@@ -196,10 +209,88 @@ def create_synthetic_normal_mixture_data_1D(
         y_val = None
 
     noise_train = measurement_noise_std * jax.random.normal(
-        shape=(len(vars) * num_train, 1, 1, 1), key=key
+        shape=(len(vars) * num_train + len(extra_points), 1, 1, 1), key=key
     )
     noise_test = measurement_noise_std * jax.random.normal(
-        shape=(len(vars) * num_test + len(extra_points), 1, 1, 1), key=key
+        shape=(len(vars) * num_test, 1, 1, 1), key=key
+    )
+    y_train = model(x_train, rngs=None) + noise_train
+    y_test = model(x_test, rngs=None) + noise_test
+    return Data(
+        x_train,
+        y_train,
+        x_test,
+        y_test,
+        x_val,
+        y_val,
+        underlying_model=model,
+        measurement_noise_std=measurement_noise_std,
+    )
+
+
+def create_synthetic_skewnormal_mixture_data_1D(
+    model,
+    vars: jnp.ndarray,
+    means: jnp.ndarray,
+    num_train: int,
+    num_test: int,
+    num_val: int = 0,
+    measurement_noise_std: float = 0.1,
+    extra_points: jnp.ndarray | None = None,
+    key=jax.random.PRNGKey(0),
+    skews: list[float] | None = None,
+) -> Data:
+
+    design_cov = jnp.diag(vars)
+    skews = skews if skews is not None else [0] * len(vars)
+    x_train = stats.skewnorm.rvs(
+        size=num_train, loc=means[0], scale=vars[0] ** 0.5, a=skews[0]
+    )
+    for i in range(1, len(vars)):
+        x_train = jnp.append(
+            x_train,
+            stats.skewnorm.rvs(
+                size=num_train,
+                loc=means[i],
+                scale=vars[i] ** 0.5,
+                a=skews[i],
+            ),
+        )
+    x_train = x_train[:, None, None, None]
+    x_test = stats.skewnorm.rvs(
+        size=num_test, loc=means[0], scale=vars[0] ** 0.5, a=skews[0]
+    )
+    for i in range(1, len(vars)):
+        x_test = jnp.append(
+            x_test,
+            stats.skewnorm.rvs(
+                size=num_test,
+                loc=means[i],
+                scale=vars[i] ** 0.5,
+                a=skews[i],
+            ),
+        )
+    x_test = x_test[:, None, None, None]
+    if extra_points is not None:
+        x_train = jnp.append(x_train, extra_points[:, None, None, None], axis=0)
+    if num_val > 0:
+        x_val = jax.random.multivariate_normal(
+            mean=means,
+            cov=design_cov,
+            shape=(num_val,),
+            key=key,
+            method="svd",
+        ).flatten()[:, None, None, None]
+        y_val = model(x_val, rngs=None)
+    else:
+        x_val = None
+        y_val = None
+
+    noise_train = measurement_noise_std * jax.random.normal(
+        shape=(len(vars) * num_train + len(extra_points), 1, 1, 1), key=key
+    )
+    noise_test = measurement_noise_std * jax.random.normal(
+        shape=(len(vars) * num_test, 1, 1, 1), key=key
     )
     y_train = model(x_train, rngs=None) + noise_train
     y_test = model(x_test, rngs=None) + noise_test

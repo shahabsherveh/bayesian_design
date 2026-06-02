@@ -960,10 +960,45 @@ class DenseNN(FlaxModel):
     def __init__(
         self, input_dim, hidden_dim_0, hidden_dim_1, hidden_dim_2, rngs: nnx.Rngs
     ):
-        self.linear_0 = nnx.Linear(input_dim, hidden_dim_0, rngs=rngs)
-        self.linear_1 = nnx.Linear(hidden_dim_0, hidden_dim_1, rngs=rngs)
-        self.linear_2 = nnx.Linear(hidden_dim_1, hidden_dim_2, rngs=rngs)
-        self.output = nnx.Linear(hidden_dim_2, 1, rngs=rngs)
+        self.linear_0 = nnx.Linear(
+            input_dim,
+            hidden_dim_0,
+            # kernel_init=nnx.nn.initializers.he_normal(),
+            kernel_init=nnx.nn.initializers.variance_scaling(
+                scale=2.0, mode="fan_in", distribution="truncated_normal"
+            ),
+            rngs=rngs,
+        )
+        self.linear_1 = nnx.Linear(
+            hidden_dim_0,
+            hidden_dim_1,
+            # kernel_init=nnx.nn.initializers.he_normal(),
+            kernel_init=nnx.nn.initializers.variance_scaling(
+                scale=2.0, mode="fan_in", distribution="truncated_normal"
+            ),
+            rngs=rngs,
+        )
+        self.linear_2 = nnx.Linear(
+            hidden_dim_1,
+            hidden_dim_2,
+            rngs=rngs,
+            # kernel_init=nnx.nn.initializers.he_normal(),
+            kernel_init=nnx.nn.initializers.variance_scaling(
+                scale=2.0, mode="fan_in", distribution="truncated_normal"
+            ),
+            # kernel_init=nnx.nn.initializers.lecun_normal(),
+        )
+        self.output = nnx.Linear(
+            hidden_dim_2,
+            1,
+            use_bias=True,
+            # kernel_init=nnx.nn.initializers.he_normal(),
+            kernel_init=nnx.nn.initializers.variance_scaling(
+                scale=2.0, mode="fan_in", distribution="truncated_normal"
+            ),
+            # kernel_init=nnx.nn.initializers.lecun_normal(),
+            rngs=rngs,
+        )
         self.input_dim = input_dim
         self.hidden_dim_0 = hidden_dim_0
         self.hidden_dim_1 = hidden_dim_1
@@ -1089,7 +1124,7 @@ class NeuralNetworkBase(Model):
                 nnx.grad(lambda model, x: model(x)[0, 0, i]),
                 in_axes=(None, 0),
             )
-            for i in range(model.weight_mapping[("output", "bias")]["shape"][0])
+            for i in range(model.weight_mapping[("output", "kernel")]["shape"][-1])
         ]
         grad = [g_fn(model, x) for g_fn in grad_fn]
         grad_weights = [

@@ -9,14 +9,14 @@ from copy import deepcopy
 
 
 jax.config.update("jax_enable_x64", True)
-design_dim = 20
+design_dim = 400
 latent_dim = design_dim + 1
 latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
 latent_var = 0.1
 latent_innovation = 0
-measurement_cov = 0.01 * jnp.eye(1)
+measurement_cov = 1 * jnp.eye(1)
 # epochs = int(10 * latent_dim)
-epochs = 50
+epochs = 100
 # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
 random_key = jax.random.PRNGKey(0)
 model = LinearNN(input_dim=design_dim, rngs=nnx.Rngs(0))
@@ -24,22 +24,23 @@ model_true = deepcopy(model)
 state_true = model_true.weights_to_state(latent_true)
 nnx.update(model_true, state_true)
 plot_results = True
-num_train = 20
-num_test = 80
-training_kwargs = {"learning_rate": 0.01, "epochs": 100, "rngs": nnx.Rngs(0)}
+num_train = 90
+num_test = 10
+training_kwargs = {"learning_rate": 0.01, "epochs": 50, "rngs": nnx.Rngs(0)}
 data = create_synthetic_data(
     model_true,
     num_train,
     num_test,
     design_dim,
-    embedding_dim=10,
-    embedding_noise_std=0.0001,
+    embedding_dim=50,
+    embedding_noise_std=0.01,
     measurement_noise_std=jnp.sqrt(measurement_cov[0, 0]),
+    var=2,
 )
 experiment = Experiment(
     model=NeuralNetworkRegressor(model),
     data=data,
-    latent_var=latent_var,
+    latent_cov=latent_var * jnp.eye(latent_dim),
     latent_innovation=latent_innovation,
     measurement_error=measurement_cov,
     plot_inter_results=plot_results,

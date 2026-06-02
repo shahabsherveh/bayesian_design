@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 from matplotlib.lines import Line2D
 from matplotlib.patches import BoxStyle, Patch
+from matplotlib.ticker import FormatStrFormatter, FuncFormatter, MaxNLocator
 from mpl_toolkits.mplot3d.axes3d import mpatches
 import numpy as np
 from scipy.stats import gaussian_kde, multivariate_normal
@@ -45,7 +46,7 @@ class Experiment:
 
     def __init__(
         self,
-        latent_var,
+        latent_cov,
         latent_innovation,
         measurement_error,
         data: Data,
@@ -82,7 +83,7 @@ class Experiment:
             )
         )
         self.state_init_prior = self.build_prior(
-            latent_variance=latent_var,
+            latent_cov=latent_cov,
             model=model,
         )
         self.data = data
@@ -108,7 +109,7 @@ class Experiment:
 
     @staticmethod
     def build_prior(
-        latent_variance,
+        latent_cov,
         model: NeuralNetworkRegressor,
     ):
         """
@@ -128,10 +129,8 @@ class Experiment:
         model_state = nnx.state(model.flax_model)
         mean = model.flax_model.state_to_weights(model_state)
         # mean = np.zeros((latent_dim, 1))
-        latent_dim = mean.shape[0]
         # mean = np.random.normal(loc=0, scale=0.0000001, size=(latent_dim, 1))
-        cov = np.eye(latent_dim) * latent_variance
-        return mean, cov
+        return mean, latent_cov
 
     @staticmethod
     def build_design_space(data):
@@ -241,6 +240,7 @@ class Experiment:
 
         y_0_pdf_vals = get_normal_likelihood(epsilon_0)
         y_1_pdf_vals = get_normal_likelihood(epsilon_1)
+        # __import__("ipdb").set_trace()
         mi = (
             jnp.log((y_0_pdf_vals * y_1_pdf_vals).mean(axis=0))
             - jnp.log(y_0_pdf_vals.mean(axis=0))
@@ -437,7 +437,7 @@ class Experiment:
         optimizer_params={"lr": 1, "max_iters": 50},
         axes_2D=None,
         figure_parameters={
-            "figsize": (13, 22),
+            "figsize": (190, 190),
             "figsize_comparison": (13, 6),
             "fontsize": 11,
         },
@@ -486,16 +486,17 @@ class Experiment:
         crit_values = []
         rmse_values = []
         rmse_values_predictions = []
-        figsize_cm = figure_parameters.get(
+        figsize_mm = figure_parameters.get(
             "figsize",
         )
-        figsize_inches = (figsize_cm[0], figsize_cm[1])
-        figsize_comparison_cm = figure_parameters.get(
+        figsize_mm = (figsize_mm[0], figsize_mm[1])
+        figsize_inches = (figsize_mm[0] / 25.4, figsize_mm[1] / 25.4)
+        figsize_comparison_mm = figure_parameters.get(
             "figsize_comparison",
         )
         figsize_comparison_inches = (
-            figsize_comparison_cm[0] / 2.54,
-            figsize_comparison_cm[1] / 2.54,
+            figsize_comparison_mm[0] / 25.4,
+            figsize_comparison_mm[1] / 25.4,
         )
 
         progress_bar = tqdm(
@@ -511,14 +512,12 @@ class Experiment:
             )
             fig_3D.subplots_adjust(hspace=0.3, wspace=0.3)
             axes_3D[0, 0].set_title("EPIG Surface")
-            axes_3D[0, 1].set_title("EIG Surface")
-            axes_3D[0, 2].set_title("EPIG-MC Surface")
+            axes_3D[0, 1].set_title("EPIG-MC Surface")
+            axes_3D[0, 2].set_title("EIG Surface")
             for i in range(3):
                 axes_3D[-1, i].set_xlabel("x1")
             for i in range(epochs):
                 axes_3D[i, 0].set_ylabel("x2")
-
-            fig_3D.suptitle(f"{criterion_label} optimization", fontsize=16)
 
         for i in progress_bar:
             rmse = self.calculate_rmse()
@@ -556,22 +555,22 @@ class Experiment:
                     )
                     crit_ax.set_ylabel(f"{criterion_label}")
                     props = dict(boxstyle="round", facecolor="wheat", alpha=0.2)
+                    # ax.set_title(f"Iteration {i + 1}")
+                    # iteration_patch = Patch(
+                    #     facecolor="none", label=f"Iter {i + 1}", alpha=0.5
+                    # )
+
+                    # handles, labels = axes_2D[i].get_legend_handles_labels()
+                    # handles.append(observed_patch)
                     ax.text(
                         0.1,
                         0.9,
-                        f"Iteration {i}",
+                        f"Iter {i}",
                         transform=ax.transAxes,
                         color="black",
                         verticalalignment="top",
                         bbox=props,
                     )
-
-                    # iteration_patch = Patch(
-                    #     facecolor="none", label=f"Iteration {i + 1}", alpha=0.5
-                    # )
-
-                    # handles, labels = axes_2D[i].get_legend_handles_labels()
-                    # handles.append(observed_patch)
                     # ax.legend(
                     #     handles=[iteration_patch],
                     #     loc="upper left",
@@ -682,10 +681,15 @@ class Experiment:
         results = []
         instances = [deepcopy(self) for _ in experiments]
         if self.plot_2D_inter_results:
-            fig, axes = plt.subplots(6, len(experiments), figsize=(13, 22), sharex=True)
-            fig.subplots_adjust(hspace=0.3, wspace=0.3, right=0.85)
+            fig, axes = plt.subplots(
+                6, len(experiments), figsize=(165 / 25.4, 165 / 25.4), sharex=True
+            )
+            fig.subplots_adjust(hspace=0.3, wspace=0.536, right=0.85)
             for i, experiment in enumerate(experiments):
                 axes[0, i].set_title(f"{experiment} Strategy")
+                axes[-1, i].set_xlabel("Design (x)")
+            for i in range(6):
+                axes[i, 0].set_ylabel("y")
 
         for i, experiment in enumerate(experiments):
             self_copy = instances[i]
@@ -718,10 +722,9 @@ class Experiment:
         pool_min = self.design_space[..., 0].min()
         pool_max = self.design_space[..., 0].max()
         distance = pool_max - pool_min
-        x_range = jnp.arange(
-            pool_min - 0.2 * distance,
-            pool_max + 0.2 * distance,
-            0.1,
+        x_range = jnp.linspace(
+            pool_min,  # - 0.2 * distance,
+            pool_max,
         )
         x_train = self.data.x_train
         predictions_train = self.model(
@@ -734,7 +737,7 @@ class Experiment:
         predictions_pool = predictions_pool.squeeze()
         predicion_validate, _ = self.ekf.measurement_prior(self.data.x_val)
         prediction_sigma_pool = jnp.sqrt(prediction_variance_pool.squeeze())
-        measurements = self.data.observe(x_range).squeeze()
+        measurements = self.data.observe(x_range, has_noise=False).squeeze()
         predictions, prediction_variance = self.ekf.measurement_prior(
             x_range[:, None, None, None]
         )
@@ -752,6 +755,7 @@ class Experiment:
             # label="Design Pool Prdictions",
             marker="o",
             color="black",
+            alpha=0.2,
             # s=50,
         )
         # ax.scatter(
@@ -775,20 +779,21 @@ class Experiment:
 
         ax.fill_between(
             x_range,
-            (predictions - 2 * prediction_sigma).squeeze(),
-            (predictions + 2 * prediction_sigma).squeeze(),
-            color="blue",
-            alpha=0.1,
-            label="95% Confidence Interval",
+            (predictions - 1 * prediction_sigma).squeeze(),
+            (predictions + 1 * prediction_sigma).squeeze(),
+            color="tab:gray",
+            alpha=0.2,
+            label="90% Confidence Interval",
         )
         if previous_designs is not None:
             previous_measurements = self.data.observe(previous_designs)
             ax.scatter(
                 previous_designs[..., 0].squeeze(),
                 previous_measurements.squeeze(),
-                color="green",
+                color="tab:brown",
                 marker="o",
                 label="Observed Designs",
+                alpha=0.7,
                 # s=100,
             )
 
@@ -797,25 +802,31 @@ class Experiment:
             ax.scatter(
                 new_design[..., 0].squeeze(),
                 new_measurements.squeeze(),
-                color="red",
+                color="tab:red",
                 marker="X",
                 label="Optimal Design",
-                s=100,
+                s=75,
             )
-        y_min, y_max = ax.get_ylim()
-        ax.fill_betweenx(
-            jnp.linspace(y_min, y_max, 10),
-            pool_min,
-            pool_max,
-            facecolor="none",
-            linestyle="--",
-        )
+            ax.vlines(
+                new_design[..., 0].squeeze(),
+                ymin=ax.get_ylim()[0],
+                ymax=new_measurements.squeeze(),
+                color="tab:red",
+                linestyle="--",
+            )
         ax_criterion = ax.twinx()
         crit_values = crit_fn(x_range[:, None, None, None]).squeeze()
         crit_values_normalized = (crit_values - crit_values.min()) / (
             crit_values.max() - crit_values.min() + 1e-8
         )
-        ax_criterion.plot(x_range, crit_values, color="blue")
+        ax_criterion.plot(
+            x_range,
+            crit_values,
+            color="tab:blue" if crit_fn == self.calculate_epig else "tab:orange",
+        )
+        # fmt_small = FormatStrFormatter("%0e")
+        fmt = FuncFormatter(lambda x, _: f"{x:.0e}" if abs(x) < 1e-2 else f"{x:.2f}")
+        ax_criterion.yaxis.set_major_formatter(fmt)
         return ax_criterion
 
     def plot_crit_surface(
@@ -875,78 +886,91 @@ class Experiment:
         crit_values_epig = self.calculate_epig(grid_points).reshape(xx1.shape)
         crit_values_eig = self.calculate_eig(grid_points).reshape(xx1.shape)
         crit_values_mc = self.calculate_epig_mc(grid_points).reshape(xx1.shape)
-        c = axes[0].contourf(xx1, xx2, crit_values_epig, levels=50, cmap="viridis")
+        fmt = FormatStrFormatter("%.2f")
+        c = axes[0].contourf(xx1, xx2, crit_values_epig, levels=50, cmap="Blues")
         axes[0].scatter(
             self.design_space[..., 0].squeeze(),
             self.design_space[..., 1].squeeze(),
             c="black",
+            alpha=0.2,
             label="Design Pool",
         )
-        plt.colorbar(c, ax=axes[0])
-        c = axes[1].contourf(xx1, xx2, crit_values_eig, levels=50, cmap="viridis")
-        axes[1].scatter(
-            self.design_space[..., 0].squeeze(),
-            self.design_space[..., 1].squeeze(),
-            c="black",
-            label="Design Pool",
-            marker="o",
-        )
-        plt.colorbar(c, ax=axes[1])
-        c = axes[2].contourf(xx1, xx2, crit_values_mc, levels=50, cmap="viridis")
-        plt.colorbar(c, ax=axes[2])
+        cbar = plt.colorbar(c, ax=axes[0], format=fmt)
+        cbar.locator = MaxNLocator(nbins=3)
+        cbar.update_ticks()
+        c = axes[2].contourf(xx1, xx2, crit_values_eig, levels=50, cmap="Oranges")
+        cbar = plt.colorbar(c, ax=axes[2], format=fmt)
+        cbar.locator = MaxNLocator(nbins=3)
+        cbar.update_ticks()
         axes[2].scatter(
             self.design_space[..., 0].squeeze(),
             self.design_space[..., 1].squeeze(),
             c="black",
             label="Design Pool",
             marker="o",
+            alpha=0.2,
+        )
+        c = axes[1].contourf(xx1, xx2, crit_values_mc, levels=50, cmap="Greens")
+        cbar = plt.colorbar(c, ax=axes[1], format=fmt)
+        cbar.locator = MaxNLocator(nbins=3)
+        cbar.update_ticks()
+        axes[1].scatter(
+            self.design_space[..., 0].squeeze(),
+            self.design_space[..., 1].squeeze(),
+            c="black",
+            label="Design Pool",
+            marker="o",
+            alpha=0.2,
         )
 
         if previous_designs is not None:
             axes[0].scatter(
                 previous_designs[..., 0].squeeze(),
                 previous_designs[..., 1].squeeze(),
-                c="blue",
+                c="tab:brown",
                 label="Added Designs",
                 marker="o",
-                s=100,
+                # s=100,
+                alpha=0.7,
             )
             axes[1].scatter(
                 previous_designs[..., 0].squeeze(),
                 previous_designs[..., 1].squeeze(),
-                c="blue",
+                c="tab:brown",
                 marker="o",
-                s=100,
+                # s=100,
+                alpha=0.7,
             )
             axes[2].scatter(
                 previous_designs[..., 0].squeeze(),
                 previous_designs[..., 1].squeeze(),
-                c="blue",
+                c="tab:brown",
                 marker="o",
-                s=100,
+                # s=100,
+                alpha=0.7,
             )
         if new_design is not None:
             axes[0].scatter(
                 new_design[..., 0].squeeze(),
                 new_design[..., 1].squeeze(),
-                c="red",
+                c="tab:red",
                 label="New Design",
                 marker="X",
-                s=100,
+                s=70,
             )
             axes[1].scatter(
                 new_design[..., 0].squeeze(),
                 new_design[..., 1].squeeze(),
-                c="red",
+                c="tab:red",
                 marker="X",
-                s=100,
+                s=70,
             )
             axes[2].scatter(
                 new_design[..., 0].squeeze(),
                 new_design[..., 1].squeeze(),
-                c="red",
+                c="tab:red",
                 marker="X",
-                s=100,
+                s=70,
             )
 
 
@@ -1041,7 +1065,7 @@ class MultiExperimentResults:
         """
         self.experiment_results_list = experiment_results_list
 
-    def plot_comparison(self):
+    def plot_comparison(self, width_mm=90, height_mm=160):
         """
         Plot prediction RMSE comparison across all experiments.
 
@@ -1054,7 +1078,11 @@ class MultiExperimentResults:
         Note:
             Each curve is labeled with its criterion name (from crit_label).
         """
-        fig, axes = plt.subplots(3, 1, figsize=(13, 6), sharex=True)
+        fig, axes = plt.subplots(
+            3, 1, figsize=(height_mm / 25.4, width_mm / 25.4), sharex=True
+        )
+        plt.rcParams.update({"font.size": 11})
+        fig.subplots_adjust(hspace=0.5)
         crit_values = jnp.array(
             [result.crit_values for result in self.experiment_results_list]
         )
@@ -1073,15 +1101,15 @@ class MultiExperimentResults:
 
         axes[0].set_title("Estimated Predictive Standard Error")
         # axes[0].set_ylabel("")
-        axes[0].legend()
+        # axes[0].legend()
         axes[1].set_title("Root Mean Squared Error")
 
         axes[2].set_title("Normalized Criterion Values")
         axes[2].set_xlabel("Iteration")
 
-    def plot_design_distribution(self):
+    def plot_design_distribution(self, width_mm=80, height_mm=160):
         fig, ax = plt.subplots(
-            figsize=(13, 6),
+            figsize=(height_mm / 25.4, width_mm / 25.4),
         )
         x_range = jnp.linspace(
             self.experiment_results_list[0].design_space.min(),
@@ -1091,7 +1119,7 @@ class MultiExperimentResults:
         design_space_kde = gaussian_kde(
             self.experiment_results_list[0].design_space.squeeze()
         )
-        ax.set_title("Optimal Designs Distribution")
+        # ax.set_title("Optimal Designs Distribution")
         ax.plot(
             x_range,
             design_space_kde(x_range),
@@ -1108,4 +1136,4 @@ class MultiExperimentResults:
             )
 
         ax.set_xlabel("Design Value")
-        ax.legend()
+        # ax.legend()

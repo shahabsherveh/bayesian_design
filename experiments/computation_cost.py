@@ -11,11 +11,13 @@ from copy import deepcopy
 import timeit
 
 
+plt.rcParams.update({"font.size": 11})
 jax.config.update("jax_enable_x64", True)
 design_dim = 10
 latent_dim = design_dim + 1
 latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
 latent_var = 0.1
+latent_cov = latent_var * jnp.eye(latent_dim)
 latent_innovation = 0
 measurement_cov = 0.25 * jnp.eye(1)
 # epochs = int(10 * latent_dim)
@@ -34,8 +36,8 @@ rand_times = []
 number_of_runs = 5
 for i in pbar:
     num_designs = 10 ** (i)
-    num_test = num_designs // 2
-    num_train = num_designs // 2
+    num_test = num_designs - 1
+    num_train = 1
     data = create_synthetic_data(
         model_true,
         num_train,
@@ -49,7 +51,7 @@ for i in pbar:
     experiment = Experiment(
         model=NeuralNetworkRegressor(model),
         data=data,
-        latent_var=latent_var,
+        latent_cov=latent_cov,
         latent_innovation=latent_innovation,
         measurement_error=measurement_cov,
         plot_inter_results=False,
@@ -60,7 +62,7 @@ for i in pbar:
     experiment = Experiment(
         model=NeuralNetworkRegressor(model),
         data=data,
-        latent_var=latent_var,
+        latent_cov=latent_cov,
         latent_innovation=latent_innovation,
         measurement_error=measurement_cov,
         plot_inter_results=False,
@@ -70,7 +72,7 @@ for i in pbar:
     experiment = Experiment(
         model=NeuralNetworkRegressor(model),
         data=data,
-        latent_var=latent_var,
+        latent_cov=latent_cov,
         latent_innovation=latent_innovation,
         measurement_error=measurement_cov,
         plot_inter_results=False,
@@ -80,7 +82,7 @@ for i in pbar:
     experiment = Experiment(
         model=NeuralNetworkRegressor(model),
         data=data,
-        latent_var=latent_var,
+        latent_cov=latent_cov,
         latent_innovation=latent_innovation,
         measurement_error=measurement_cov,
         plot_inter_results=False,
@@ -92,34 +94,34 @@ for i in pbar:
     mc_times.append(mc)
     rand_times.append(rand)
 
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(80 / 25.4, 80 / 25.4))
 x_axis = 10 ** (jnp.array(pbar.iterable))
-ax.set_title("Computation Performance")
-ax.semilogy(
+# ax.set_title("Computation Performance")
+ax.loglog(
     x_axis,
     epig_times,
     label="EPIG",
     marker="o",
 )
-ax.semilogy(
+ax.loglog(
     x_axis,
     eig_times,
     label="EIG",
     marker="o",
 )
-ax.semilogy(
+ax.loglog(
     x_axis,
     mc_times,
-    label="MC",
+    label="EPIG-MC",
     marker="o",
 )
-ax.semilogy(
+ax.loglog(
     x_axis,
     rand_times,
     label="RAND",
     marker="o",
 )
-ax.set_xlabel("Number of Training Samples")
+ax.set_xlabel("Pool Size")
 ax.set_ylabel("Computation Time (s)")
-plt.legend()
+# plt.legend()
 plt.show()

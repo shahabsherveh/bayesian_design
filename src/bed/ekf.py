@@ -64,7 +64,7 @@ class EKF:
             tuple: (prior_mean, prior_cov)
         """
         mean = state_prev
-        cov = state_cov_prev + state_innovation
+        cov = state_cov_prev + state_innovation * jnp.eye(state_cov_prev.shape[0])
         return mean, cov
 
     def get_state_posterior(self, measurement, x):
@@ -93,10 +93,10 @@ class EKF:
         mean_post = (prior_mean + K @ epsilon).squeeze([0, 1])
         F = np.eye(len(self.state_prior[0])) - K @ H
         FT = jnp.matrix_transpose(F)
-        cov_post = (F @ self.state_prior[1]).squeeze(0)
-        # cov_post = (
-        #     F @ self.state_prior[1] @ FT + K @ self.measurement_error @ KT
-        # ).squeeze(0)
+        # cov_post = (F @ self.state_prior[1]).squeeze(0)
+        cov_post = (
+            F @ self.state_prior[1] @ FT + K @ self.measurement_error @ KT
+        ).squeeze(0)
         return mean_post, cov_post
 
     def measurement_prior(self, x):

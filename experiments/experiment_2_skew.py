@@ -1,4 +1,8 @@
-from bed.data import create_synthetic_data, create_synthetic_normal_mixture_data_1D
+from bed.data import (
+    create_synthetic_data,
+    create_synthetic_normal_mixture_data_1D,
+    create_synthetic_skewnormal_mixture_data_1D,
+)
 from bed.models import DenseNN, LinearNN, NeuralNetworkRegressor, Sinus
 from bed.experiments import Experiment
 import jax
@@ -12,19 +16,18 @@ hidden_dim_0 = 16
 hidden_dim_1 = 16
 hidden_dim_2 = 16
 design_dim = 1
-latent_var = 1
 latent_innovation = 0
-measurement_cov = 1 * jnp.eye(1)
+measurement_cov = 0.1 * jnp.eye(1)
 # epochs = int(10 * latent_dim)
 # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
-training_kwargs = {"learning_rate": 0.1, "epochs": 10, "rngs": nnx.Rngs(0)}
+training_kwargs = {"learning_rate": 0.1, "epochs": 100, "rngs": nnx.Rngs(0)}
 random_key = jax.random.PRNGKey(0)
 model = DenseNN(
     input_dim=design_dim,
     hidden_dim_0=hidden_dim_0,
     hidden_dim_1=hidden_dim_1,
     hidden_dim_2=hidden_dim_2,
-    rngs=nnx.Rngs(6),
+    rngs=nnx.Rngs(9),
 )
 latent_dim = design_dim + 1
 latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
@@ -39,20 +42,26 @@ plot_results = True
 num_train = 20
 num_test = 80
 epochs = 101
-data = create_synthetic_normal_mixture_data_1D(
+data = create_synthetic_skewnormal_mixture_data_1D(
     model_true,
     jnp.array(
         [
             0.07,
         ]
     ),
-    jnp.array([0]),
+    jnp.array(
+        [
+            0,
+        ]
+    ),
     num_train,
     num_test,
-    measurement_noise_std=measurement_cov[0, 0] ** 0.5,
-    extra_points=jnp.array([1.25]),
-    # extra_points=jnp.array([]),
+    measurement_noise_std=0.5**0.5,
+    # extra_points=jnp.array([-1.25]),
+    extra_points=jnp.array([]),
+    skews=[0.1],
 )
+
 model_state = nnx.state(model)
 mean = model.state_to_weights(model_state)
 latent_dim = mean.shape[0]
