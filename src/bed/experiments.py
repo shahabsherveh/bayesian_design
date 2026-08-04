@@ -777,14 +777,14 @@ class Experiment:
             label="Predictions",
         )
 
-        ax.fill_between(
-            x_range,
-            (predictions - 1 * prediction_sigma).squeeze(),
-            (predictions + 1 * prediction_sigma).squeeze(),
-            color="tab:gray",
-            alpha=0.2,
-            label="90% Confidence Interval",
-        )
+        # ax.fill_between(
+        #     x_range,
+        #     (predictions - 1 * prediction_sigma).squeeze(),
+        #     (predictions + 1 * prediction_sigma).squeeze(),
+        #     color="tab:gray",
+        #     alpha=0.2,
+        #     label="90% Confidence Interval",
+        # )
         if previous_designs is not None:
             previous_measurements = self.data.observe(previous_designs)
             ax.scatter(
@@ -1065,7 +1065,7 @@ class MultiExperimentResults:
         """
         self.experiment_results_list = experiment_results_list
 
-    def plot_comparison(self, width_mm=90, height_mm=160):
+    def plot_comparison(self, width_mm=120, height_mm=90):
         """
         Plot prediction RMSE comparison across all experiments.
 
@@ -1104,7 +1104,7 @@ class MultiExperimentResults:
         # axes[0].legend()
         axes[1].set_title("Root Mean Squared Error")
 
-        axes[2].set_title("Normalized Criterion Values")
+        axes[2].set_title("Normalized Utility Values")
         axes[2].set_xlabel("Iteration")
 
     def plot_design_distribution(self, width_mm=80, height_mm=160):
