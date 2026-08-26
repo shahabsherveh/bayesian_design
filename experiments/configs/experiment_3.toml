@@ -1,0 +1,36 @@
+[runtime]
+x64 = true
+
+[model]
+type = "CNN"
+seed = 0
+
+[data]
+kind = "mnist"
+num_train = 20
+num_test = 80
+batch_size = 32
+
+[latent_cov]
+type = "scaled_identity"
+scale = 0.1
+
+[measurement_error]
+variance = 0.25
+dim = 10
+
+[experiment]
+latent_innovation = 0
+plot_inter_results = false
+pre_train_model = true
+
+[training]
+learning_rate = 0.01
+epochs = 200
+seed = 0
+
+[run]
+strategies = ["EPIG", "EIG", "EPIG-MC", "RAND"]
+iterations = 100
+optimizer_method = "brute_force"
+

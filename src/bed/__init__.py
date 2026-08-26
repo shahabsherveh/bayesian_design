@@ -1,44 +1,47 @@
-"""
-Bayesian Experimental Design (BED) Library.
+"""Bayesian experimental design library."""
 
-This package provides tools for optimal experimental design using Bayesian methods.
-It includes implementations of various design criteria and optimization algorithms
-for different model types.
-
-Main modules:
-    - base: Abstract base classes for experimental design
-    - models: Concrete implementations (Linear, GP, EKF)
-
-Typical usage:
-    from bed.models import LinearGaussianModel, GaussianProcessModel
-    from bed.base import BayesianExperimentalDesign
-"""
+from .base import BayesianExperimentalDesign
+from .ekf import EKF
+from .experiments import Experiment, ExperimentResults, MultiExperimentResults
+from .models import (
+    CNN,
+    DenseNN,
+    FlaxModel,
+    GP,
+    GaussianProcessModel,
+    LinearGaussianModel,
+    LinearModel,
+    LinearNN,
+    Model,
+    NeuralNetworkClassifier,
+    NeuralNetworkRegressor,
+    Sinus,
+    SinusInverse,
+    generate_full_design_matrix,
+)
 
 __version__ = "0.0.1"
 __author__ = "Shahab Sherveh"
-
-# Import main classes for convenient access
-try:
-    from .models import (
-        LinearGaussianModel,
-        GP,
-        GaussianProcessModel,
-        EKF,
-        Experiment1,
-        generate_full_design_matrix,
-    )
-    from .base import Experiment, BayesianExperimentalDesign
-except ImportError:
-    # Handle case where dependencies aren't installed yet
-    pass
 
 __all__ = [
     "LinearGaussianModel",
     "GP",
     "GaussianProcessModel",
     "EKF",
-    "Experiment1",
     "generate_full_design_matrix",
-    "Experiment",
     "BayesianExperimentalDesign",
+    "Experiment",
+    "ExperimentResults",
+    "MultiExperimentResults",
+    "EKF",
+    "Model",
+    "LinearModel",
+    "FlaxModel",
+    "LinearNN",
+    "DenseNN",
+    "CNN",
+    "NeuralNetworkRegressor",
+    "NeuralNetworkClassifier",
+    "Sinus",
+    "SinusInverse",
 ]

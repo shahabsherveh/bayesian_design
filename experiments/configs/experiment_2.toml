@@ -1,0 +1,56 @@
+[runtime]
+x64 = true
+
+[model]
+type = "DenseNN"
+input_dim = 10
+hidden_dim_0 = 16
+hidden_dim_1 = 16
+hidden_dim_2 = 16
+seed = 6
+
+[truth]
+enabled = true
+seed = 1234
+scale = 1.0
+bias = 0.0
+
+[data]
+kind = "synthetic"
+num_train = 199
+num_test = 1
+input_dim = 10
+embedding_dim = 5
+embedding_noise_std = 0.10
+measurement_noise_std = 0.0
+var = 1.0
+seed = 0
+
+[latent_cov]
+type = "scaled_identity"
+scale = 0.1
+
+[measurement_error]
+variance = 1.0
+dim = 1
+
+[experiment]
+latent_innovation = 0
+plot_inter_results = false
+pre_train_model = true
+
+[training]
+learning_rate = 0.5
+epochs = 300
+seed = 0
+
+[run]
+strategies = ["EPIG", "EIG", "EPIG-MC", "RAND"]
+iterations = 100
+optimizer_method = "grid_search"
+
+[run.optimizer_params]
+lr = 10
+max_iters = 10
+num_samples = 300
+

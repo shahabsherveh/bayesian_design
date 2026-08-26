@@ -10,6 +10,7 @@ ipdb
 cvxpy
 jax
 flax[all]
+tensorflow
 tqdm
 optax
 typer

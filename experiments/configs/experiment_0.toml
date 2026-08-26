@@ -1,0 +1,54 @@
+[runtime]
+x64 = true
+
+[model]
+type = "LinearNN"
+input_dim = 2
+seed = 0
+
+[truth]
+enabled = true
+seed = 1234
+scale = 1.0
+bias = 0.0
+
+[data]
+kind = "synthetic"
+num_train = 20
+num_test = 80
+input_dim = 2
+embedding_dim = 1
+embedding_noise_std = 0.001
+measurement_noise_std = 0.4
+var = 1.0
+seed = 0
+
+[latent_cov]
+type = "he_diagonal"
+bias_var = 1.0
+kernel_scale = 2.0
+
+[measurement_error]
+variance = 0.16
+dim = 1
+
+[experiment]
+latent_innovation = 0
+plot_inter_results = true
+pre_train_model = false
+
+[training]
+learning_rate = 0.01
+epochs = 50
+seed = 0
+
+[run]
+strategies = ["EPIG", "EIG", "EPIG-MC", "RAND"]
+iterations = 5
+optimizer_method = "grid_search"
+
+[run.optimizer_params]
+lr = 2
+max_iters = 100
+num_samples = 200
+
