@@ -12,6 +12,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from .ekf import EKF
+from .ukf import UKF
 from .models import LinearModel, Model, NeuralNetworkRegressor
 from .data import Data
 
@@ -40,7 +41,7 @@ class Experiment:
         design_space: Pool of candidate design points
         measurement_error: Observation noise variance
         latent_innovation: Process noise covariance
-        ekf: Extended Kalman Filter for state estimation
+        ekf: Selected Kalman filter for state estimation
         plot_results: Whether to visualize results during optimization
     """
 
@@ -58,6 +59,7 @@ class Experiment:
             "learning_rate": 0.01,
             "rngs": nnx.Rngs(0),
         },
+        filter_type="ekf",
     ):
         """
         Initialize sequential experimental design framework.
@@ -72,6 +74,7 @@ class Experiment:
             design_pool_num: Number of candidate designs to sample
             measurement_error: Observation noise variance (scalar)
             plot_results: If True, plot optimization surfaces during run
+            filter_type: State estimator to use, either ``"ekf"`` or ``"ukf"``.
         """
         self.model = (
             model
@@ -87,18 +90,25 @@ class Experiment:
             model=model,
         )
         self.data = data
-        self.design_space, self.true_measurements = self.build_design_space(data)
+        self.design_space, self.true_measurements = self.build_design_space(
+            data)
         self.measurement_error = (
-            measurement_error  # if not pre_train_model else model.mse * jnp.eye(1)
+            # if not pre_train_model else model.mse * jnp.eye(1)
+            measurement_error
         )
         self.latent_innovation = latent_innovation
-        self.ekf = EKF(
+        filter_class = {"ekf": EKF, "ukf": UKF}.get(filter_type.lower())
+        if filter_class is None:
+            raise ValueError("filter_type must be either 'ekf' or 'ukf'")
+        self.filter = filter_class(
             model=model,
             state_prev=self.state_init_prior[0],
             state_cov_prev=self.state_init_prior[1],
             state_innovation=self.latent_innovation,
             measurement_error=self.measurement_error,
         )
+        # Keep the historical attribute name for existing experiment code.
+        self.ekf = self.filter
 
         self.plot_3D_inter_results = (
             plot_inter_results if self.design_space.shape[-1] == 2 else False
@@ -147,7 +157,8 @@ class Experiment:
             Uses fixed random seed (0) for reproducibility.
         """
         design_space = jnp.concatenate([data.x_train, data.x_test], axis=0)
-        true_measurements = jnp.concatenate([data.y_train, data.y_test], axis=0)
+        true_measurements = jnp.concatenate(
+            [data.y_train, data.y_test], axis=0)
         return design_space, true_measurements
 
     def calculate_epig(self, x, x_1=None, **kwargs):
@@ -178,31 +189,8 @@ class Experiment:
         if x_1 is None:
             x_1 = self.design_space
         ekf = self.ekf
-        state_prev = ekf.state_prior[0]
-        j_1 = ekf.model.jacobian(state_prev.reshape(-1, 1), x_1)[None, ...]
-        j_1_T = jnp.matrix_transpose(j_1)
-        j_0 = ekf.model.jacobian(state_prev.reshape(-1, 1), x)[:, None, ...]
-        j_0_T = jnp.matrix_transpose(j_0)
-        sigma = ekf.state_prior[1]
-        _, s_x = ekf.measurement_prior(x)
-        s_x_inv = jnp.linalg.inv(s_x[:, None, ...])
-        posterior_covs_deficit = j_1 @ sigma @ (j_0_T @ s_x_inv @ j_0) @ sigma @ j_1_T
-        cov_0 = j_1 @ sigma @ j_1_T + ekf.measurement_error
-
-        # epig = -jnp.log(1 - (posterior_covs_deficit / cov_0)) / 2
-        epig = (
-            -jnp.log(
-                jnp.linalg.det(
-                    jnp.eye(self.measurement_error.shape[0])
-                    - posterior_covs_deficit @ jnp.linalg.inv(cov_0)
-                )
-            )
-            / 2
-        )
-        # Get the diagonal to ignore the cross-covariance of the design pool_values
-        # Makes sense since in classical case the trace where calculated for the information matrix
-        # epig = posterior_covs_deficit.diagonal() / cov_0.diagonal()
-        return epig.mean(axis=1)
+        result = ekf.calculate_epig(x, x_1)
+        return result
 
     def calculate_mutual_information_mc(
         self,
@@ -227,7 +215,8 @@ class Experiment:
             This implementation is incomplete - it samples but doesn't compute
             the mutual information. Use calculate_epig() for a working implementation.
         """
-        mean_1 = jax.vmap(lambda theta: self.model(theta.T, x_1))(latent_samples)
+        mean_1 = jax.vmap(lambda theta: self.model(
+            theta.T, x_1))(latent_samples)
         mean_0 = jax.vmap(lambda theta: self.model(theta.T, x_0))(
             latent_samples
         ).swapaxes(1, 2)
@@ -326,14 +315,7 @@ class Experiment:
             Monte Carlo estimation. The optimal EIG design is proportional to
             the eigenvector with largest eigenvalue of the prior covariance.
         """
-        state_prior_mean = self.ekf.state_prior[0]
-        state_prior_cov = self.ekf.state_prior[1]
-        measurement_error = self.measurement_error
-
-        H = self.model.jacobian(state_prior_mean.reshape(-1, 1), x)
-        H_T = H.T if H.ndim == 2 else H.swapaxes(1, 2)
-
-        eig = jnp.log((H @ state_prior_cov @ H_T / measurement_error) + 1) / 2
+        eig = self.ekf.calculate_eig(x, *arg, **kwargs)
         return jnp.atleast_1d(eig.squeeze())
 
     def calculate_random(self, x, key, **kwargs):
@@ -397,7 +379,8 @@ class Experiment:
                 size=self.design_space[:1].shape,
                 scale=0.01,
             )
-            grad_func = jax.value_and_grad(lambda x: criterion_func(x, key=keys)[0])
+            grad_func = jax.value_and_grad(
+                lambda x: criterion_func(x, key=keys)[0])
             max_iters = params.get("max_iters")
             lr = params.get("lr")
             pbar = tqdm(range(max_iters), desc="Optimizing design", leave=True)
@@ -551,10 +534,12 @@ class Experiment:
                         ax=ax,
                         crit_fn=criterion_func,
                         new_design=x_opt,
-                        previous_designs=jnp.array(designs) if designs else None,
+                        previous_designs=jnp.array(
+                            designs) if designs else None,
                     )
                     crit_ax.set_ylabel(f"{criterion_label}")
-                    props = dict(boxstyle="round", facecolor="wheat", alpha=0.2)
+                    props = dict(boxstyle="round",
+                                 facecolor="wheat", alpha=0.2)
                     # ax.set_title(f"Iteration {i + 1}")
                     # iteration_patch = Patch(
                     #     facecolor="none", label=f"Iter {i + 1}", alpha=0.5
@@ -577,7 +562,8 @@ class Experiment:
                     #     draggable=True,
                     # )
 
-            ekf.state_prior = ekf.get_state_posterior(measurement, x_opt[None, ...])
+            ekf.state_prior = ekf.get_state_posterior(
+                measurement, x_opt[None, ...])
             # latent_estimates = multivariate_normal(
             #     mean=ekf.state_prior[0].flatten(), cov=ekf.state_prior[1]
             # ).rvs(size=1000)
@@ -651,7 +637,8 @@ class Experiment:
         """
 
         return (
-            jnp.mean((predictions.squeeze() - true_measurements.squeeze()) ** 2) ** 0.5
+            jnp.mean((predictions.squeeze() -
+                     true_measurements.squeeze()) ** 2) ** 0.5
         )
 
     def run_experiment(
@@ -825,7 +812,8 @@ class Experiment:
             color="tab:blue" if crit_fn == self.calculate_epig else "tab:orange",
         )
         # fmt_small = FormatStrFormatter("%0e")
-        fmt = FuncFormatter(lambda x, _: f"{x:.0e}" if abs(x) < 1e-2 else f"{x:.2f}")
+        fmt = FuncFormatter(
+            lambda x, _: f"{x:.0e}" if abs(x) < 1e-2 else f"{x:.2f}")
         ax_criterion.yaxis.set_major_formatter(fmt)
         return ax_criterion
 
@@ -862,12 +850,14 @@ class Experiment:
             at all grid points, which can be slow for fine grids.
         """
         x_range = (
-            (self.design_space[:, 0].min() - 1, self.design_space[:, 0].max() + 1)
+            (self.design_space[:, 0].min() - 1,
+             self.design_space[:, 0].max() + 1)
             if x_range is None
             else x_range
         )
         y_range = (
-            (self.design_space[:, 1].min() - 1, self.design_space[:, 1].max() + 1)
+            (self.design_space[:, 1].min() - 1,
+             self.design_space[:, 1].max() + 1)
             if y_range is None
             else y_range
         )
@@ -887,7 +877,8 @@ class Experiment:
         crit_values_eig = self.calculate_eig(grid_points).reshape(xx1.shape)
         crit_values_mc = self.calculate_epig_mc(grid_points).reshape(xx1.shape)
         fmt = FormatStrFormatter("%.2f")
-        c = axes[0].contourf(xx1, xx2, crit_values_epig, levels=50, cmap="Blues")
+        c = axes[0].contourf(xx1, xx2, crit_values_epig,
+                             levels=50, cmap="Blues")
         axes[0].scatter(
             self.design_space[..., 0].squeeze(),
             self.design_space[..., 1].squeeze(),
@@ -898,7 +889,8 @@ class Experiment:
         cbar = plt.colorbar(c, ax=axes[0], format=fmt)
         cbar.locator = MaxNLocator(nbins=3)
         cbar.update_ticks()
-        c = axes[2].contourf(xx1, xx2, crit_values_eig, levels=50, cmap="Oranges")
+        c = axes[2].contourf(xx1, xx2, crit_values_eig,
+                             levels=50, cmap="Oranges")
         cbar = plt.colorbar(c, ax=axes[2], format=fmt)
         cbar.locator = MaxNLocator(nbins=3)
         cbar.update_ticks()
@@ -910,7 +902,8 @@ class Experiment:
             marker="o",
             alpha=0.2,
         )
-        c = axes[1].contourf(xx1, xx2, crit_values_mc, levels=50, cmap="Greens")
+        c = axes[1].contourf(xx1, xx2, crit_values_mc,
+                             levels=50, cmap="Greens")
         cbar = plt.colorbar(c, ax=axes[1], format=fmt)
         cbar.locator = MaxNLocator(nbins=3)
         cbar.update_ticks()
@@ -1094,7 +1087,8 @@ class MultiExperimentResults:
         )
         for i, result in enumerate(self.experiment_results_list):
             axes[0].plot(result.rmse_values, label=result.crit_label)
-            axes[1].plot(result.rmse_values_predictions, label=result.crit_label)
+            axes[1].plot(result.rmse_values_predictions,
+                         label=result.crit_label)
             if result.crit_label.upper() == "RAND":
                 break
             axes[2].plot(crit_values_normalized[i], label=result.crit_label)

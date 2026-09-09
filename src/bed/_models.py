@@ -13,17 +13,14 @@ from copy import deepcopy
 from functools import partial
 
 import cvxpy as cp
-import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy.random import normal
 import optax
-from scipy.stats import multivariate_normal
 import seaborn as sns
-from tqdm import tqdm
-
 from flax import nnx
+from scipy.stats import multivariate_normal
+from tqdm import tqdm
 
 
 class LinearGaussianModel:
@@ -47,12 +44,12 @@ class LinearGaussianModel:
     """
 
     def __init__(
-        self,
-        sigma,
-        theta,
-        X,
-        observable_designs: list[int] | None = None,
-        R=np.eye(2),
+            self,
+            sigma,
+            theta,
+            X,
+            observable_designs: list[int] | None = None,
+            R=np.eye(2),
     ):
         """
         Initialize Linear Gaussian Model.
@@ -359,12 +356,12 @@ class GP:
     """
 
     def __init__(
-        self,
-        kernel,
-        theta,
-        X,
-        observable_designs: list[int] | None = None,
-        R=np.eye(2),
+            self,
+            kernel,
+            theta,
+            X,
+            observable_designs: list[int] | None = None,
+            R=np.eye(2),
     ):
         self.kernel = kernel
         self.theta = theta
@@ -915,8 +912,8 @@ class FlaxModel(nnx.Module):
     def _create_weight_mapping(self):
         mapping = {}
         idx = 0
-        model_state = nnx.state(self)
-        for layer_name, layer in model_state.items():
+        layers = nnx.state(self)['layers']
+        for layer_name, layer in layers.items():
             for param_name, param in layer.items():
                 size = param.get_value().size
                 shape = param.shape
@@ -929,22 +926,24 @@ class FlaxModel(nnx.Module):
 
     def weights_to_state(self, z):
         self._validate_parameters(z)
-        state_dict = {}
+        layers_dict = {}
         for weight_name, meta in self.weight_mapping.items():
             slice = meta["slice"]
             shape = meta["shape"]
-            w = z[slice[0] : slice[1]].reshape(shape)
-            if state_dict.get(weight_name[0]) is None:
-                state_dict[weight_name[0]] = {weight_name[1]: nnx.Param(w)}
+            w = z[slice[0]: slice[1]].reshape(shape)
+            if layers_dict.get(weight_name[0]) is None:
+                layers_dict[weight_name[0]] = {weight_name[1]: nnx.Param(w)}
             else:
-                state_dict[weight_name[0]].update({weight_name[1]: nnx.Param(w)})
+                layers_dict[weight_name[0]].update({weight_name[1]: nnx.Param(w)})
+            state_dict = {"layers": layers_dict}
         return nnx.State(state_dict)
 
     def state_to_weights(self, state: nnx.State):
         weights = jnp.zeros((self.weight_size, 1))
+        layers = state.layers
         for weight_name, meta in self.weight_mapping.items():
-            w = state[weight_name[0]][weight_name[1]].get_value().flatten()[:, None]
-            weights = weights.at[meta["slice"][0] : meta["slice"][1]].set(w)
+            w = layers[weight_name[0]][weight_name[1]].get_value().flatten()[:, None]
+            weights = weights.at[meta["slice"][0]: meta["slice"][1]].set(w)
         return weights
 
     def _validate_parameters(self, z):
@@ -958,58 +957,25 @@ class FlaxModel(nnx.Module):
 
 class DenseNN(FlaxModel):
     def __init__(
-        self, input_dim, hidden_dim_0, hidden_dim_1, hidden_dim_2, rngs: nnx.Rngs
+            self, input_dim, hidden_dims, output_dim, rngs: nnx.Rngs
     ):
-        self.linear_0 = nnx.Linear(
-            input_dim,
-            hidden_dim_0,
-            # kernel_init=nnx.nn.initializers.he_normal(),
-            kernel_init=nnx.nn.initializers.variance_scaling(
-                scale=2.0, mode="fan_in", distribution="truncated_normal"
-            ),
-            rngs=rngs,
-        )
-        self.linear_1 = nnx.Linear(
-            hidden_dim_0,
-            hidden_dim_1,
-            # kernel_init=nnx.nn.initializers.he_normal(),
-            kernel_init=nnx.nn.initializers.variance_scaling(
-                scale=2.0, mode="fan_in", distribution="truncated_normal"
-            ),
-            rngs=rngs,
-        )
-        self.linear_2 = nnx.Linear(
-            hidden_dim_1,
-            hidden_dim_2,
-            rngs=rngs,
-            # kernel_init=nnx.nn.initializers.he_normal(),
-            kernel_init=nnx.nn.initializers.variance_scaling(
-                scale=2.0, mode="fan_in", distribution="truncated_normal"
-            ),
-            # kernel_init=nnx.nn.initializers.lecun_normal(),
-        )
-        self.output = nnx.Linear(
-            hidden_dim_2,
-            1,
-            use_bias=True,
-            # kernel_init=nnx.nn.initializers.he_normal(),
-            kernel_init=nnx.nn.initializers.variance_scaling(
-                scale=2.0, mode="fan_in", distribution="truncated_normal"
-            ),
-            # kernel_init=nnx.nn.initializers.lecun_normal(),
-            rngs=rngs,
-        )
+        nodes = [input_dim] + hidden_dims + [output_dim]
+        self.layers = nnx.List()
+        for i in range(len(nodes)-1):
+            self.layers.append(nnx.Linear(nodes[i], nodes[i + 1],rngs=rngs, kernel_init=nnx.nn.initializers.variance_scaling(
+                scale=2.0, mode="fan_in", distribution="truncated_normal")))
         self.input_dim = input_dim
-        self.hidden_dim_0 = hidden_dim_0
-        self.hidden_dim_1 = hidden_dim_1
-        self.hidden_dim_2 = hidden_dim_2
+        self.hidden_dims = hidden_dims
+        self.output_dim = output_dim
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
-        l0 = nnx.gelu(self.linear_0(x))
-        l1 = nnx.gelu(self.linear_1(l0))
-        l2 = nnx.gelu(self.linear_2(l1))
-        output = self.output(l2)
+        output = x
+        for l in self.layers[:-1]:
+            output = nnx.gelu(l(
+                output,
+            ))
+        output = self.layers[-1](output)
         return output
 
     def _validate_input(self, x):
@@ -1124,7 +1090,7 @@ class NeuralNetworkBase(Model):
                 nnx.grad(lambda model, x: model(x)[0, 0, i]),
                 in_axes=(None, 0),
             )
-            for i in range(model.weight_mapping[("output", "kernel")]["shape"][-1])
+            for i in range(model.output_dim)
         ]
         grad = [g_fn(model, x) for g_fn in grad_fn]
         grad_weights = [
@@ -1135,7 +1101,7 @@ class NeuralNetworkBase(Model):
         return jac_value
 
     def train(
-        self, x_train, y_train, rngs: nnx.Rngs, epochs=200, learning_rate=0.1, **kwargs
+            self, x_train, y_train, rngs: nnx.Rngs, epochs=200, learning_rate=0.1, **kwargs
     ):
         """
         Train the neural network model using mean squared error loss.

@@ -113,6 +113,10 @@ from bed.experiments import Experiment
 from bed.models import LinearNN, NeuralNetworkRegressor
 ```
 
+Pass `filter_type="ukf"` to `Experiment` (or set
+`experiment.filter_type` in a configuration) to use the unscented Kalman
+filter; the default remains `"ekf"`.
+
 Create a `Data` object, wrap a Flax model in a neural measurement model, and
 pass both to `Experiment`. Use `run()` for one criterion or
 `run_experiment()` to compare independent strategies. The latter deep-copies
@@ -123,7 +127,7 @@ See the scripts in `experiments/` for complete configurations.
 
 - `src/bed/data.py`: dataset container, synthetic data generation, and MNIST loading
 - `src/bed/models/`: classical, Gaussian-process, and neural model namespaces
-- `src/bed/ekf.py` and `src/bed/filters/`: EKF state estimation
+- `src/bed/ekf.py`, `src/bed/ukf.py`, and `src/bed/filters/`: EKF/UKF state estimation
 - `src/bed/experiments/`: sequential runner and result containers
 - `src/bed/base.py`: minimal generic experiment interfaces
 - `experiments/`: reproducible research configurations

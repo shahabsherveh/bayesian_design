@@ -2,7 +2,7 @@ import os
 import tempfile
 import numpy as np
 import jax.numpy as jnp
-from bed.data import Data, create_synthetic_data, get_mnist_data
+from bed.data import Data, create_synthetic_data, get_mnist_data, get_uci_data
 
 
 def simple_model(x):
@@ -66,4 +66,8 @@ def test_create_synthetic_data_shapes():
 
 def test_mnist_data():
     data = get_mnist_data(num_train=10, num_test=5)
+    breakpoint()
+
+def test_uci_data():
+    data = get_uci_data(dataset="",test_size=.2)
     breakpoint()

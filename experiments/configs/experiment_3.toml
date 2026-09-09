@@ -20,6 +20,7 @@ variance = 0.25
 dim = 10
 
 [experiment]
+filter_type = "ekf"
 latent_innovation = 0
 plot_inter_results = false
 pre_train_model = true
@@ -33,4 +34,3 @@ seed = 0
 strategies = ["EPIG", "EIG", "EPIG-MC", "RAND"]
 iterations = 100
 optimizer_method = "brute_force"
-

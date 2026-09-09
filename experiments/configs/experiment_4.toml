@@ -1,0 +1,39 @@
+
+[runtime]
+x64 = true
+
+[model]
+type = "DNN"
+seed = 0
+input_dim = 8
+hidden_dims = [16,16]
+output_dim = 1
+
+[data]
+kind = "uci"
+name = "Concrete Compressive Strength"
+test_size = 0.2
+
+[latent_cov]
+type = "he_diagonal"
+scale = 1
+
+[measurement_error]
+variance = 0.05
+dim = 1
+
+[experiment]
+filter_type = "ukf"
+latent_innovation = 0.01
+plot_inter_results = false
+pre_train_model = true
+
+[training]
+learning_rate = 0.05
+epochs = 200
+seed = 0
+
+[run]
+strategies = ["EPIG", "EIG","RANDOM"]
+iterations = 50
+optimizer_method = "brute_force"

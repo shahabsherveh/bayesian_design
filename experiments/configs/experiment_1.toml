@@ -32,6 +32,7 @@ variance = 1.0
 dim = 1
 
 [experiment]
+filter_type = "ekf"
 latent_innovation = 0
 plot_inter_results = true
 pre_train_model = false
@@ -48,4 +49,3 @@ optimizer_method = "brute_force"
 
 [run.optimizer_params]
 num_samples = 400
-

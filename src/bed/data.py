@@ -1,8 +1,6 @@
 from jax import numpy as jnp
 import jax
 from scipy import stats
-import tensorflow_datasets as tfds
-import tensorflow as tf
 
 from bed.models import FlaxModel
 
@@ -332,6 +330,8 @@ def create_synthetic_fatailed_data_1D(
 
 
 def get_mnist_data(num_train: int, num_test: int, batch_size: int = 32) -> Data:
+    import tensorflow as tf
+    import tensorflow_datasets as tfds
     train_ds: tf.data.Dataset = tfds.load("mnist", split="train")
     test_ds: tf.data.Dataset = tfds.load("mnist", split="test")
     train_ds = train_ds.map(
@@ -371,3 +371,17 @@ def get_mnist_data(num_train: int, num_test: int, batch_size: int = 32) -> Data:
         x_test=jnp.array(x_test),
         y_test=y_test,
     )
+
+def get_uci_data(dataset:str,test_size:int|float):
+    # fetch dataset 
+    from ucimlrepo import fetch_ucirepo
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+    uci_data = fetch_ucirepo(dataset) 
+      
+    x = uci_data.data.features
+    scaler = StandardScaler()
+    x = jnp.array(scaler.fit_transform(x)[:,None,None,:])
+    y = jnp.atleast_2d(uci_data.data.targets.values)[:,None,None,:]
+    x_train,x_test,y_train,y_test = train_test_split(x,y,test_size=test_size)
+    return Data(x_train,y_train,x_test,y_test)

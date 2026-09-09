@@ -2,27 +2,18 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-import tomllib
 import typer
-import jax
-import jax.numpy as jnp
-from flax import nnx
 import matplotlib.pyplot as plt
 
-from bed.data import (
-    create_synthetic_data,
-    create_synthetic_normal_mixture_data_1D,
-    create_synthetic_skewnormal_mixture_data_1D,
-    get_mnist_data,
-)
-from bed.experiments import Experiment
-from bed.models import CNN, DenseNN, LinearNN, NeuralNetworkClassifier, NeuralNetworkRegressor
+from bed.data import get_uci_data
+
 
 app = typer.Typer()
 CONFIG_DIR = Path(__file__).resolve().parents[3] / "experiments" / "configs"
 
 
 def _load_config(config: str) -> dict:
+    import tomllib
     config_path = Path(config)
     if not config_path.exists():
         config_path = CONFIG_DIR / f"{config}.toml"
@@ -38,17 +29,20 @@ def _load_config(config: str) -> dict:
 
 
 def _build_model(model_cfg: dict):
+    import jax
+    import jax.numpy as jnp
+    from flax import nnx
+    from bed.models import CNN, DenseNN, LinearNN, NeuralNetworkClassifier, NeuralNetworkRegressor
     model_type = model_cfg["type"]
     seed = model_cfg.get("seed", 0)
     if model_type == "LinearNN":
         model = LinearNN(input_dim=model_cfg["input_dim"], rngs=nnx.Rngs(seed))
         wrapper = NeuralNetworkRegressor(model)
-    elif model_type == "DenseNN":
+    elif model_type == "DNN":
         model = DenseNN(
             input_dim=model_cfg["input_dim"],
-            hidden_dim_0=model_cfg["hidden_dim_0"],
-            hidden_dim_1=model_cfg["hidden_dim_1"],
-            hidden_dim_2=model_cfg["hidden_dim_2"],
+            hidden_dims=model_cfg["hidden_dims"],
+            output_dim=model_cfg["output_dim"],
             rngs=nnx.Rngs(seed),
         )
         wrapper = NeuralNetworkRegressor(model)
@@ -61,6 +55,7 @@ def _build_model(model_cfg: dict):
 
 
 def _build_latent_cov(model, latent_cfg: dict):
+    import jax.numpy as jnp
     cov_type = latent_cfg["type"]
     if cov_type == "scaled_identity":
         return latent_cfg["scale"] * jnp.eye(model.weight_size)
@@ -79,6 +74,16 @@ def _build_latent_cov(model, latent_cfg: dict):
 
 
 def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
+    import jax
+    import jax.numpy as jnp
+    from flax import nnx
+
+    from bed.data import (
+        create_synthetic_data,
+        create_synthetic_normal_mixture_data_1D,
+        create_synthetic_skewnormal_mixture_data_1D,
+        get_mnist_data,
+    )
     kind = data_cfg["kind"]
     if kind == "mnist":
         return get_mnist_data(
@@ -86,6 +91,10 @@ def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
             num_test=data_cfg["num_test"],
             batch_size=data_cfg.get("batch_size", 32),
         )
+    if kind == "uci":
+        dataset= data_cfg["name"]
+        test_size=data_cfg['test_size']
+        return get_uci_data(dataset=dataset, test_size=test_size)
 
     model_true = deepcopy(model)
     if truth_cfg and truth_cfg.get("enabled", True):
@@ -153,13 +162,16 @@ def run_experiment_from_config(
     show_plot: bool = True,
     dry_run: bool = False,
 ):
+    import jax
+    from jax import numpy as jnp
+    from flax import nnx
+    from bed.experiments import Experiment
     cfg = _load_config(config)
     jax.config.update("jax_enable_x64", cfg.get("runtime", {}).get("x64", True))
 
     model, wrapped_model = _build_model(cfg["model"])
     latent_cov = _build_latent_cov(model, cfg["latent_cov"])
     data = _build_data(model, cfg["data"], cfg.get("truth"))
-
     training_cfg = cfg.get("training", {})
     training_kwargs = {
         "learning_rate": training_cfg.get("learning_rate", 0.01),
@@ -191,6 +203,7 @@ def run_experiment_from_config(
         ),
         pre_train_model=cfg["experiment"].get("pre_train_model", False),
         training_kwargs=training_kwargs,
+        filter_type=cfg["experiment"].get("filter_type", "ekf"),
     )
 
     run_cfg = cfg["run"]
@@ -262,3 +275,7 @@ def experiment(
     )
     if dry_run:
         print(result)
+if __name__ == "__main__":
+   results = run_experiment_from_config(
+       config="experiment_4",
+   )
