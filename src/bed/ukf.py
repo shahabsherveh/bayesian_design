@@ -2,7 +2,6 @@
 
 from os import environ
 
-from flax import nnx
 from flax.nnx import Rngs
 import jax
 from scipy.stats import multivariate_normal
@@ -172,7 +171,8 @@ class UKF:
         Returns:
             tuple: ``(mean, deviations)`` with ``mean`` of shape ``(B, d_y)`` and
             ``deviations`` of shape ``(B, K, d_y)`` holding ``f(sigma_k, x_b) - mean_b``
-            for the ``K = 2 d + 1`` sigma points of the current state prior.
+            for the ``K = 2 n + 1`` sigma points of the current state prior (``n`` the
+            state dimension).
         """
         if jnp.ndim(x) == 3:
             x = x[None, ...]
@@ -225,8 +225,8 @@ class UKF:
         _, state_cov = self.state_prior
         state_cov_post = state_cov - \
             P_x @ jnp.linalg.inv(S_x) @ jnp.matrix_transpose(P_x)
-        eig = jnp.linalg.slogdet(state_cov).logabsdet - \
-            jnp.linalg.slogdet(state_cov_post).logabsdet
+        eig = 0.5 * (jnp.linalg.slogdet(state_cov).logabsdet -
+                     jnp.linalg.slogdet(state_cov_post).logabsdet)
         return eig.squeeze()
 
 

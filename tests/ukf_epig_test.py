@@ -120,3 +120,140 @@ def test_epig_approaches_ekf_for_tight_prior_on_nonlinear_model():
         rel_err.append(float(jnp.max(jnp.abs(u - e) / jnp.abs(e))))
     assert rel_err[1] < rel_err[0]
     assert rel_err[1] < 1e-2
+
+
+# ---------------------------------------------------------------------------
+# Oracles independent of bed.ukf: their own sigma points (Cholesky columns), their own
+# weights, explicit loops and explicit joint covariances. They share only the forward pass.
+# ---------------------------------------------------------------------------
+
+
+def _oracle_epig(f, z, sigma, R, X, pool, alpha, beta=2.0, kappa=0.0):
+    import numpy as np
+
+    z = np.asarray(z).ravel()
+    n = z.size
+    lam = alpha**2 * (n + kappa) - n
+    L = np.linalg.cholesky((n + lam) * np.asarray(sigma))
+    points = np.vstack([z, z + L.T, z - L.T])
+    wm = np.full(2 * n + 1, 1 / (2 * (n + lam)))
+    wc = wm.copy()
+    wm[0] = lam / (n + lam)
+    wc[0] = lam / (n + lam) + 1 - alpha**2 + beta
+
+    def deviations(x):
+        vals = np.stack([np.asarray(f(p, x)).reshape(-1) for p in points])
+        return vals - wm @ vals
+
+    out = []
+    for x in X:
+        dx = deviations(x)
+        s_x = (dx * wc[:, None]).T @ dx + R
+        mi = []
+        for xp in pool:
+            dp = deviations(xp)
+            s_p = (dp * wc[:, None]).T @ dp + R
+            c = (dp * wc[:, None]).T @ dx
+            joint = np.block([[s_x, c.T], [c, s_p]])
+            mi.append(0.5 * (np.log(np.linalg.det(s_x)) + np.log(np.linalg.det(s_p)) - np.log(np.linalg.det(joint))))
+        out.append(np.mean(mi))
+    return np.asarray(out)
+
+
+def _dense(output_dim, seed=1):
+    flax_model = DenseNN(input_dim=3, hidden_dims=[5], output_dim=output_dim, rngs=nnx.Rngs(seed))
+    model = NeuralNetworkRegressor(flax_model)
+    z = flax_model.state_to_weights(nnx.state(flax_model))
+    return flax_model, model, z
+
+
+def _full_rank_prior(n, seed=0):
+    a = jax.random.normal(jax.random.PRNGKey(seed), (n, n))
+    return 0.3 * a @ a.T / n + 0.05 * jnp.eye(n)
+
+
+def test_epig_two_outputs_with_full_prior_matches_independent_oracle():
+    # d_y = 2 makes C_j a genuinely asymmetric matrix, so this fails if C and C^T are swapped
+    # in the Schur complement; a non-diagonal prior fails if rows and columns of the Cholesky
+    # factor are confused; alpha < 1 fails if the (1 - alpha^2) term of w_0^(c) is missing.
+    flax_model, model, z = _dense(output_dim=2)
+    sigma = _full_rank_prior(flax_model.weight_size)
+    R = jnp.array([[0.05, 0.01], [0.01, 0.08]])
+    X = jax.random.normal(jax.random.PRNGKey(3), (4, 3))
+    pool = jax.random.normal(jax.random.PRNGKey(4), (5, 3))
+
+    def f(p, x):
+        return model(jnp.asarray(p), jnp.asarray(x).reshape(1, 1, 1, -1))
+
+    for alpha in (1.0, 0.3):
+        ukf = UKF(model, z, sigma, 0.0, R, alpha=alpha)
+        got = ukf.calculate_epig(X[:, None, None, :], pool[:, None, None, :])
+        want = _oracle_epig(f, z, sigma, R, X, pool, alpha)
+        assert jnp.allclose(got, want, rtol=1e-10, atol=1e-12), (alpha, got, want)
+
+
+def test_epig_two_outputs_linear_model_matches_jacobian_closed_form():
+    # Linear two-output network: the exact Gaussian answer follows from the Jacobians,
+    # C_j = J'_j Sigma J_x^T, S = J Sigma J^T + R. Independent of any filter class.
+    flax_model = DenseNN(input_dim=3, hidden_dims=[], output_dim=2, rngs=nnx.Rngs(2))
+    model = NeuralNetworkRegressor(flax_model)
+    z = flax_model.state_to_weights(nnx.state(flax_model))
+    sigma = _full_rank_prior(flax_model.weight_size, seed=5)
+    R = jnp.array([[0.05, 0.01], [0.01, 0.08]])
+    X = jax.random.normal(jax.random.PRNGKey(6), (3, 1, 1, 3))
+    pool = jax.random.normal(jax.random.PRNGKey(7), (4, 1, 1, 3))
+
+    def jac(x):
+        return jax.jacobian(lambda zz: model(zz, x[None]).reshape(-1))(z.ravel())
+
+    expected = []
+    for x in X:
+        jx = jac(x)
+        s_x = jx @ sigma @ jx.T + R
+        mi = []
+        for xp in pool:
+            jp = jac(xp)
+            s_p = jp @ sigma @ jp.T + R
+            c = jp @ sigma @ jx.T
+            mi.append(0.5 * (jnp.linalg.slogdet(s_p)[1] - jnp.linalg.slogdet(s_p - c @ jnp.linalg.inv(s_x) @ c.T)[1]))
+        expected.append(jnp.mean(jnp.array(mi)))
+    ukf = UKF(model, z, sigma, 0.0, R, alpha=0.5)
+    assert jnp.allclose(ukf.calculate_epig(X, pool), jnp.array(expected), rtol=1e-10)
+
+
+class _Quadratic1D:
+    """y = x z^2 with a scalar state; the (N, 1, 1, d) convention."""
+
+    def __call__(self, state, x):
+        return (x.reshape(-1) * state[0] ** 2).reshape(-1, 1, 1, 1)
+
+
+def test_epig_scalar_quadratic_state_matches_analytic_gaussian_moments():
+    # For z ~ N(m, s^2) in one dimension the scaled unscented transform with beta = 2 matches
+    # the fourth moment at every alpha, provided w_0^(c) carries the (1 - alpha^2) term. Hence
+    # Var(x z^2) = x^2 v and Cov(x z^2, x' z^2) = x x' v with v = 4 m^2 s^2 + 2 s^4, and the
+    # criterion has a closed form. This is the regression test for the central weight.
+    m, s2, R = 0.8, 0.5, 0.05
+    X = jnp.array([1.5, -0.7, 0.3, 2.0])
+    pool = jnp.array([0.5, -1.2, 1.0])
+    v = 4 * m**2 * s2 + 2 * s2**2
+
+    def analytic(x):
+        s_x = x**2 * v + R
+        terms = [
+            0.5 * jnp.log(s_x * (xp**2 * v + R) / (s_x * (xp**2 * v + R) - (x * xp * v) ** 2))
+            for xp in pool
+        ]
+        return jnp.mean(jnp.array(terms))
+
+    want = jnp.array([analytic(x) for x in X])
+    for alpha in (1.0, 0.3, 0.05):
+        ukf = UKF(_Quadratic1D(), jnp.array([m]), jnp.array([[s2]]), 0.0, jnp.array([[R]]), alpha=alpha)
+        got = ukf.calculate_epig(X.reshape(-1, 1, 1, 1), pool.reshape(-1, 1, 1, 1))
+        assert jnp.allclose(got, want, rtol=1e-9), (alpha, got, want)
+
+
+def test_eig_equals_ekf_closed_form_for_linear_model():
+    ekf, ukf = _filters(hidden_dims=[], prior_var=0.5)
+    x = _designs(jax.random.PRNGKey(9), 5, 2)
+    assert jnp.allclose(ukf.calculate_eig(x), ekf.calculate_eig(x), rtol=1e-10)
