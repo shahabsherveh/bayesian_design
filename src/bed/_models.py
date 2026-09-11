@@ -1091,7 +1091,7 @@ class NeuralNetworkBase(Model):
         nnx.update(model, state)
         grad_fn = [
             nnx.vmap(
-                nnx.grad(lambda model, x: model(x)[0, 0, i]),
+                nnx.grad(lambda model, x, i=i: model(x)[0, 0, i]),
                 in_axes=(None, 0),
             )
             for i in range(model.output_dim)
