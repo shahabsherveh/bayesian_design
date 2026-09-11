@@ -5,7 +5,8 @@ from bed.ukf import UKF
 
 class QuadraticModel:
     def __call__(self, state, x):
-        return (state[0] ** 2 + x.reshape(-1)[0] * state[1]).reshape(1, 1)
+        # x has the package convention (N, 1, 1, d); return (N, 1, 1, 1)
+        return (state[0] ** 2 + x.reshape(-1) * state[1]).reshape(-1, 1, 1, 1)
 
 
 def test_ukf_nonlinear_update_reduces_uncertainty():
@@ -22,7 +23,8 @@ def test_ukf_nonlinear_update_reduces_uncertainty():
         jnp.array([[2.5]]), jnp.array([[[[2.0]]]])
     )
 
-    assert prior_mean.shape == (1, 1)
+    assert prior_mean.shape == (1, 1, 1, 1)
+    assert prior_cov.shape == (1, 1, 1, 1)
     assert posterior_mean.shape == (2,)
     assert posterior_cov.shape == (2, 2)
     assert jnp.trace(posterior_cov) < jnp.trace(ukf.state_prior[1])
@@ -41,5 +43,5 @@ def test_ukf_batched_measurement_prior():
         jnp.array([[[[1.0]]], [[[2.0]]]])
     )
 
-    assert mean.shape == (2, 1)
-    assert covariance.shape == (2, 1, 1)
+    assert mean.shape == (2, 1, 1, 1)
+    assert covariance.shape == (2, 1, 1, 1)

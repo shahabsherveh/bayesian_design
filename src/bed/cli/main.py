@@ -63,7 +63,8 @@ def _build_latent_cov(model, latent_cfg: dict):
         bias_var = latent_cfg.get("bias_var", 1.0)
         kernel_scale = latent_cfg.get("kernel_scale", 2.0)
         diag = jnp.zeros((model.weight_size,))
-        for (_, param_name), meta in model.weight_mapping.items():
+        for path, meta in model.weight_mapping.items():
+            param_name = path[-1]
             s0, s1 = meta["slice"]
             shape = meta["shape"]
             fan_in = shape[0]
