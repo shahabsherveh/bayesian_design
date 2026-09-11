@@ -5,8 +5,7 @@ from os import environ
 from flax import nnx
 from flax.nnx import Rngs
 import jax
-from numpy import linalg
-from scipy.stats import multivariate_normal, sigmaclip
+from scipy.stats import multivariate_normal
 import jax.numpy as jnp
 
 from bed._models import DenseNN, NeuralNetworkRegressor, Model
@@ -55,15 +54,13 @@ class UKF:
         lam = self.alpha**2 * (n + self.kappa) - n
         scale = n + lam
         covariance = (covariance + covariance.T) / 2
-        root = jnp.linalg.cholesky(
-            scale * covariance + self.state_innovation
-        )
+        root = jnp.linalg.cholesky(scale * covariance)
         points = jnp.concatenate(
             [mean[None], mean[None] + root.T, mean[None] - root.T], axis=0
         )
         weights_mean = jnp.full(2 * n + 1, 1 / (2 * scale))
         weights_cov = weights_mean.at[0].set(
-            1 - n / scale + self.beta
+            1 - n / scale + (1 - self.alpha**2 + self.beta)
         )
         weights_mean = weights_mean.at[0].set(1 - n / scale)
         return points, jnp.expand_dims(weights_mean, axis=[0, 2, 3, 4]), jnp.expand_dims(weights_cov, axis=[0, 2, 3, 4])
@@ -75,8 +72,7 @@ class UKF:
     @state_prior.setter
     def state_prior(self, value):
         mean, cov = value
-        self.sigma_points = self._get_sigma_points(
-            mean, cov + self.state_innovation)
+        self.sigma_points = self._get_sigma_points(mean, cov)
         self._state_prior = mean, cov
 
     def _measurements(self, points, x):
@@ -122,14 +118,8 @@ class UKF:
 
     def measurement_prior(self, x):
         """Return the unscented predictive distribution at a design point."""
-        if jnp.ndim(x) >= 4 and x.shape[0] > 1:
-            results = [self.measurement_prior(x_i[None, ...]) for x_i in x]
-            return (
-                jnp.concatenate([result[0] for result in results]),
-                jnp.stack([result[1] for result in results]),
-            )
         mean, covariance, _ = self._measurement_statistics(x)
-        return mean[:, None], covariance
+        return mean, covariance
 
     def measurement_posterior(self, x_pred, x_obs, measurement):
         """Return the predictive distribution after an observed measurement."""
@@ -144,20 +134,21 @@ class UKF:
 
     def measurement_posterior_cov_estimate(self, x_pred, x_obs):
         """Estimate predictive covariance after observing at ``x_obs``."""
-        prior_pred = self.measurement_prior(x_pred)
-        prior_obs = self.measurement_prior(x_obs)
-        points, weights_mean, weights_cov = self._sigma_point()
+        if jnp.ndim(x_pred) == 3:
+            x_pred = x_pred[None, ...]
+        if jnp.ndim(x_obs) == 3:
+            x_obs = x_obs[None, ...]
+        points, weights_mean, weights_cov = self.sigma_points
         pred_values = self._measurements(points, x_pred)
         obs_values = self._measurements(points, x_obs)
-        pred_mean = jnp.sum(pred_values * weights_mean[:, None], axis=0)
-        obs_mean = jnp.sum(obs_values * weights_mean[:, None], axis=0)
-        cross = jnp.einsum(
-            "i,ij,ik->jk",
-            weights_cov,
-            pred_values - pred_mean,
-            obs_values - obs_mean,
-        )
-        return prior_pred[1] - cross @ jnp.linalg.inv(prior_obs[1]) @ cross.T
+        pred_mean = jnp.sum(pred_values * weights_mean, axis=1)
+        obs_mean = jnp.sum(obs_values * weights_mean, axis=1)
+        pred_dev = pred_values - jnp.expand_dims(pred_mean, axis=1)
+        obs_dev = obs_values - jnp.expand_dims(obs_mean, axis=1)
+        cov_pred = jnp.sum(weights_cov * pred_dev * pred_dev, axis=1) + self.measurement_error
+        cov_obs = jnp.sum(weights_cov * obs_dev * obs_dev, axis=1) + self.measurement_error
+        cross = jnp.sum(weights_cov * pred_dev * obs_dev, axis=1)
+        return cov_pred - cross * cross / cov_obs
 
     def calculate_mutual_information(self, x_pred, x_obs):
         """Calculate mutual information in nats."""
