@@ -910,39 +910,40 @@ class FlaxModel(nnx.Module):
         raise NotImplementedError
 
     def _create_weight_mapping(self):
+        """Map every parameter path of the NNX state to a slice of the flat vector.
+
+        Works for any nesting depth (e.g. ``self.output`` in ``LinearNN``,
+        ``self.layers[i]`` in ``DenseNN``, ``self.conv1`` in ``CNN``).
+        Keys are the full parameter paths as tuples; the last element is the
+        parameter name (``"kernel"`` or ``"bias"``).
+        """
         mapping = {}
         idx = 0
-        layers = nnx.state(self)['layers']
-        for layer_name, layer in layers.items():
-            for param_name, param in layer.items():
-                size = param.get_value().size
-                shape = param.shape
-                mapping[(layer_name, param_name)] = {
-                    "slice": (idx, idx + size),
-                    "shape": shape,
-                }
-                idx += size
+        for path, param in nnx.to_flat_state(nnx.state(self)):
+            size = param.get_value().size
+            shape = param.shape
+            mapping[tuple(path)] = {
+                "slice": (idx, idx + size),
+                "shape": shape,
+            }
+            idx += size
         return mapping, idx
 
     def weights_to_state(self, z):
         self._validate_parameters(z)
-        layers_dict = {}
-        for weight_name, meta in self.weight_mapping.items():
+        flat = []
+        for path, meta in self.weight_mapping.items():
             slice = meta["slice"]
             shape = meta["shape"]
             w = z[slice[0]: slice[1]].reshape(shape)
-            if layers_dict.get(weight_name[0]) is None:
-                layers_dict[weight_name[0]] = {weight_name[1]: nnx.Param(w)}
-            else:
-                layers_dict[weight_name[0]].update({weight_name[1]: nnx.Param(w)})
-            state_dict = {"layers": layers_dict}
-        return nnx.State(state_dict)
+            flat.append((path, nnx.Param(w)))
+        return nnx.from_flat_state(flat)
 
     def state_to_weights(self, state: nnx.State):
         weights = jnp.zeros((self.weight_size, 1))
-        layers = state.layers
-        for weight_name, meta in self.weight_mapping.items():
-            w = layers[weight_name[0]][weight_name[1]].get_value().flatten()[:, None]
+        flat = dict(nnx.to_flat_state(state))
+        for path, meta in self.weight_mapping.items():
+            w = flat[path].get_value().flatten()[:, None]
             weights = weights.at[meta["slice"][0]: meta["slice"][1]].set(w)
         return weights
 
@@ -985,6 +986,8 @@ class DenseNN(FlaxModel):
 class LinearNN(FlaxModel):
     def __init__(self, input_dim, rngs: nnx.Rngs):
         self.output = nnx.Linear(input_dim, 1, rngs=rngs)
+        self.input_dim = input_dim
+        self.output_dim = 1
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
@@ -1023,6 +1026,7 @@ class CNN(FlaxModel):
         self.output = nnx.Linear(7 * 7 * 2, 10, rngs=rngs)
         # self.dropout2 = nnx.Dropout(rate=0.025)
         # self.linear2 = nnx.Linear(128, 10, rngs=rngs)
+        self.output_dim = 10
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
@@ -1087,7 +1091,7 @@ class NeuralNetworkBase(Model):
         nnx.update(model, state)
         grad_fn = [
             nnx.vmap(
-                nnx.grad(lambda model, x: model(x)[0, 0, i]),
+                nnx.grad(lambda model, x, i=i: model(x)[0, 0, i]),
                 in_axes=(None, 0),
             )
             for i in range(model.output_dim)

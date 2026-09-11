@@ -163,7 +163,7 @@ class EKF:
         cov_meas_post = H @ state_post[1] @ HT + self.measurement_error
         return mean_meas_post, cov_meas_post
 
-    def measurement_posrerior_cov_estimate(self, x_pred, x_obs):
+    def measurement_posterior_cov_estimate(self, x_pred, x_obs):
         """
         Estimate posterior measurement covariance without actual observation.
 
@@ -242,69 +242,7 @@ class EKF:
         EIG measures how much information observing at x_1 provides about
         the latent parameters themselves (not predictions). For linear models,
         this equals x_1^T @ Cov_prior @ x_1, which is the prior variance
-        of measurenp.hstack(ments at x_1.
-
-        Args:
-            x_0: Proposed observation design of shape (d, 1)
-            x_1: Not used (kept for interface compatibility with calculate_epig)
-
-        Returns:
-            EIG value (scalar). Higher values indicate more informative designs.
-
-        Note:
-            For linear Gaussian models, EIG has a closed form and doesn't require
-            Monte Carlo estimation. The optimal EIG design is proportional to
-            the eigenvector with largest eigenvalue of the prior covariance.
-        """
-        state_prior_mean = self.ekf.state_prior[0]
-        state_prior_cov = self.ekf.state_prior[1]
-        measurement_error = self.measurement_error
-
-        H = self.model.jacobian(state_prior_mean.reshape(-1, 1), x)
-        H_T = H.T if H.ndim == 2 else H.swapaxes(1, 2)
-
-        eig = jnp.log((H @ state_prior_cov @ H_T / measurement_error) + 1) / 2
-        return jnp.atleast_1d(eig.squeeze())
-
-    def calculate_eig(self, x, *arg, **kwargs):
-        """
-        Calculate Expected Information Gain (EIG) about parameters.
-
-        EIG measures how much information observing at x_1 provides about
-        the latent parameters themselves (not predictions). For linear models,
-        this equals x_1^T @ Cov_prior @ x_1, which is the prior variance
-        of measurenp.hstack(ments at x_1.
-
-        Args:
-            x_0: Proposed observation design of shape (d, 1)
-            x_1: Not used (kept for interface compatibility with calculate_epig)
-
-        Returns:
-            EIG value (scalar). Higher values indicate more informative designs.
-
-        Note:
-            For linear Gaussian models, EIG has a closed form and doesn't require
-            Monte Carlo estimation. The optimal EIG design is proportional to
-            the eigenvector with largest eigenvalue of the prior covariance.
-        """
-        state_prior_mean = self.state_prior[0]
-        state_prior_cov = self.state_prior[1]
-        measurement_error = self.measurement_error
-
-        H = self.model.jacobian(state_prior_mean.reshape(-1, 1), x)
-        H_T = H.T if H.ndim == 2 else H.swapaxes(1, 2)
-
-        eig = jnp.log((H @ state_prior_cov @ H_T / measurement_error) + 1) / 2
-        return jnp.atleast_1d(eig.squeeze())
-
-    def calculate_eig(self, x, *arg, **kwargs):
-        """
-        Calculate Expected Information Gain (EIG) about parameters.
-
-        EIG measures how much information observing at x_1 provides about
-        the latent parameters themselves (not predictions). For linear models,
-        this equals x_1^T @ Cov_prior @ x_1, which is the prior variance
-        of measurenp.hstack(ments at x_1.
+        of measurements at x_1.
 
         Args:
             x_0: Proposed observation design of shape (d, 1)

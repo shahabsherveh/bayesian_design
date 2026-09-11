@@ -260,14 +260,14 @@ class TestExperiment2:
     random_key = jax.random.PRNGKey(0)
     model = DenseNN(
         input_dim=design_dim,
-        hidden_dim_0=hidden_dim_0,
-        hidden_dim_1=hidden_dim_1,
+        hidden_dims=[hidden_dim_0, hidden_dim_1],
+        output_dim=1,
         rngs=nnx.Rngs(6),
     )
     model_true = DenseNN(
         input_dim=design_dim,
-        hidden_dim_0=hidden_dim_0,
-        hidden_dim_1=hidden_dim_1,
+        hidden_dims=[hidden_dim_0, hidden_dim_1],
+        output_dim=1,
         rngs=nnx.Rngs(0),
     )
     state_true = model_true.weights_to_state(latent_true)
