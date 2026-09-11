@@ -21,9 +21,8 @@ training_kwargs = {"learning_rate": 0.01, "epochs": 30, "rngs": nnx.Rngs(0)}
 random_key = jax.random.PRNGKey(0)
 model = DenseNN(
     input_dim=design_dim,
-    hidden_dim_0=hidden_dim_0,
-    hidden_dim_1=hidden_dim_1,
-    hidden_dim_2=hidden_dim_2,
+    hidden_dims=[hidden_dim_0, hidden_dim_1, hidden_dim_2],
+    output_dim=1,
     rngs=nnx.Rngs(6),
 )
 latent_dim = design_dim + 1

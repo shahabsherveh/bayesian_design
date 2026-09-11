@@ -2,11 +2,10 @@
 x64 = true
 
 [model]
-type = "DenseNN"
+type = "DNN"
 input_dim = 10
-hidden_dim_0 = 16
-hidden_dim_1 = 16
-hidden_dim_2 = 16
+hidden_dims = [16, 16, 16]
+output_dim = 1
 seed = 6
 
 [truth]
