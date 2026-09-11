@@ -162,20 +162,63 @@ class UKF:
         """Backward-compatible alias for :meth:`measurement_prior`."""
         return self.measurement_prior(x)
 
-    def _calculate_epig(self, x, x_1):
-        mean, S_x, P_x = self._measurement_statistics(x)
-        mean_1, S_x_1, P_x_1 = self._measurement_statistics(x_1)
-        _, state_cov = self.state_prior
-        C = jnp.linalg.matrix_transpose(
-            P_x_1) @ jnp.linalg.inv(state_cov) @ P_x
-        S_plus = S_x_1 - C @ jnp.linalg.inv(S_x) @ jnp.matrix_transpose(C)
-        epig = jnp.linalg.slogdet(S_x_1).logabsdet - \
-            jnp.linalg.slogdet(S_plus).logabsdet
-        return epig.mean()
+    def _sigma_deviations(self, x):
+        """Sigma-point measurement statistics at the designs ``x``.
+
+        Args:
+            x: Designs of shape ``(B, 1, 1, d)`` (a single ``(1, 1, d)`` design is
+                promoted to a batch of one).
+
+        Returns:
+            tuple: ``(mean, deviations)`` with ``mean`` of shape ``(B, d_y)`` and
+            ``deviations`` of shape ``(B, K, d_y)`` holding ``f(sigma_k, x_b) - mean_b``
+            for the ``K = 2 d + 1`` sigma points of the current state prior.
+        """
+        if jnp.ndim(x) == 3:
+            x = x[None, ...]
+        points, weights_mean, _ = self.sigma_points
+        values = self._measurements(points, x)
+        values = values.reshape(values.shape[0], values.shape[1], -1)
+        mean = jnp.sum(values * weights_mean.reshape(1, -1, 1), axis=1)
+        return mean, values - mean[:, None, :]
 
     def calculate_epig(self, x, x_1):
-        results = jax.vmap(lambda x: self._calculate_epig(x, x_1))(x)
-        return results
+        """Closed-form EPIG of the candidate designs ``x`` for the test pool ``x_1``.
+
+        All covariances come from one sigma-point transform of the current state
+        prior. With ``dev`` the sigma-point deviations of ``_sigma_deviations`` and
+        ``w`` the covariance weights,
+
+            S_x   = sum_k w_k dev_x[k] dev_x[k]^T + R          (candidate)
+            S'_j  = sum_k w_k dev_j[k] dev_j[k]^T + R          (test point j)
+            C_j   = sum_k w_k dev_j[k] dev_x[k]^T              (cross-covariance)
+
+        and ``EPIG(x) = mean_j 1/2 [log det S'_j - log det (S'_j - C_j S_x^{-1} C_j^T)]``.
+        The Schur complement is the predictive covariance at ``x'_j`` conditional on
+        ``y`` under the Gaussian approximation of the joint ``(y, y'_j)``. For a
+        forward model linear in the state the sigma-point moments are exact, so
+        ``C_j = J'_j Sigma_t J_x^T`` and the result equals the EKF closed form.
+        No inverse of the state covariance is needed.
+
+        Args:
+            x: Candidate designs, shape ``(B, 1, 1, d)``.
+            x_1: Test pool, shape ``(M, 1, 1, d)``.
+
+        Returns:
+            EPIG per candidate, shape ``(B,)``, in nats.
+        """
+        weights_cov = self.sigma_points[2].reshape(-1)
+        _, dev_x = self._sigma_deviations(x)
+        _, dev_1 = self._sigma_deviations(x_1)
+        R = self.measurement_error
+        S_x = jnp.einsum("k,bka,bkc->bac", weights_cov, dev_x, dev_x) + R
+        S_1 = jnp.einsum("k,mka,mkc->mac", weights_cov, dev_1, dev_1) + R
+        C = jnp.einsum("k,mka,bkc->bmac", weights_cov, dev_1, dev_x)
+        S_plus = S_1[None] - C @ jnp.linalg.inv(S_x)[:, None] @ jnp.matrix_transpose(C)
+        logdet_1 = jnp.linalg.slogdet(S_1).logabsdet
+        logdet_plus = jnp.linalg.slogdet(S_plus).logabsdet
+        epig = 0.5 * (logdet_1[None, :] - logdet_plus)
+        return epig.mean(axis=1)
 
     def calculate_eig(self, x, *args, **kwargs):
         mean, S_x, P_x = self._measurement_statistics(x)
