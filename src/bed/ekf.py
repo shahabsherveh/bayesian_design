@@ -31,6 +31,8 @@ class EKF:
         state_cov_prev,
         state_innovation,
         measurement_error,
+        *arg,
+        **kwargs
     ):
         """
         Initialize Extended Kalman Filter.
@@ -115,34 +117,6 @@ class EKF:
         mean_meas = self.model(self.state_prior[0], x)
         cov_meas = H @ self.state_prior[1] @ HT + self.measurement_error
         return mean_meas, cov_meas
-
-    def calculate_epig(self, x, x_1):
-        state_prev = self.state_prior[0]
-        j_1 = self.model.jacobian(state_prev.reshape(-1, 1), x_1)[None, ...]
-        j_1_T = jnp.matrix_transpose(j_1)
-        j_0 = self.model.jacobian(state_prev.reshape(-1, 1), x)[:, None, ...]
-        j_0_T = jnp.matrix_transpose(j_0)
-        sigma = self.state_prior[1]
-        _, s_x = self.measurement_prior(x)
-        s_x_inv = jnp.linalg.inv(s_x[:, None, ...])
-        posterior_covs_deficit = j_1 @ sigma @ (
-            j_0_T @ s_x_inv @ j_0) @ sigma @ j_1_T
-        cov_0 = j_1 @ sigma @ j_1_T + self.measurement_error
-
-        # epig = -jnp.log(1 - (posterior_covs_deficit / cov_0)) / 2
-        epig = (
-            -jnp.log(
-                jnp.linalg.det(
-                    jnp.eye(self.measurement_error.shape[0])
-                    - posterior_covs_deficit @ jnp.linalg.inv(cov_0)
-                )
-            )
-            / 2
-        )
-        # Get the diagonal to ignore the cross-covariance of the design pool_values
-        # Makes sense since in classical case the trace where calculated for the information matrix
-        # epig = posterior_covs_deficit.diagonal() / cov_0.diagonal()
-        return epig.mean(axis=1)
 
     def measurement_posterior(self, x_pred, x_obs, measurement):
         """
@@ -256,8 +230,8 @@ class EKF:
             Monte Carlo estimation. The optimal EIG design is proportional to
             the eigenvector with largest eigenvalue of the prior covariance.
         """
-        state_prior_mean = self.state_prior[0]
-        state_prior_cov = self.state_prior[1]
+        state_prior_mean = self.ekf.state_prior[0]
+        state_prior_cov = self.ekf.state_prior[1]
         measurement_error = self.measurement_error
 
         H = self.model.jacobian(state_prior_mean.reshape(-1, 1), x)
@@ -265,3 +239,31 @@ class EKF:
 
         eig = jnp.log((H @ state_prior_cov @ H_T / measurement_error) + 1) / 2
         return jnp.atleast_1d(eig.squeeze())
+
+    def calculate_epig(self, x, x_1):
+        state_prev = self.state_prior[0]
+        j_1 = self.model.jacobian(state_prev.reshape(-1, 1), x_1)[None, ...]
+        j_1_T = jnp.matrix_transpose(j_1)
+        j_0 = self.model.jacobian(state_prev.reshape(-1, 1), x)[:, None, ...]
+        j_0_T = jnp.matrix_transpose(j_0)
+        sigma = self.state_prior[1]
+        _, s_x = self.measurement_prior(x)
+        s_x_inv = jnp.linalg.inv(s_x[:, None, ...])
+        posterior_covs_deficit = j_1 @ sigma @ (
+            j_0_T @ s_x_inv @ j_0) @ sigma @ j_1_T
+        cov_0 = j_1 @ sigma @ j_1_T + self.measurement_error
+
+        # epig = -jnp.log(1 - (posterior_covs_deficit / cov_0)) / 2
+        epig = (
+            -jnp.log(
+                jnp.linalg.det(
+                    jnp.eye(self.measurement_error.shape[0])
+                    - posterior_covs_deficit @ jnp.linalg.inv(cov_0)
+                )
+            )
+            / 2
+        )
+        # Get the diagonal to ignore the cross-covariance of the design pool_values
+        # Makes sense since in classical case the trace where calculated for the information matrix
+        # epig = posterior_covs_deficit.diagonal() / cov_0.diagonal()
+        return epig.mean(axis=1)

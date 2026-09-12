@@ -22,10 +22,12 @@ class Data:
         self.x_test = x_test
         self.y_test = y_test
         self.x_val = (
-            x_val if x_val is not None else jnp.concatenate([x_train, x_test], axis=0)
+            x_val if x_val is not None else jnp.concatenate(
+                [x_train, x_test], axis=0)
         )
         self.y_val = (
-            y_val if x_val is not None else jnp.concatenate([y_train, y_test], axis=0)
+            y_val if x_val is not None else jnp.concatenate(
+                [y_train, y_test], axis=0)
         )
         self.underlying_model = underlying_model
         self.measurement_noise_std = (
@@ -177,11 +179,13 @@ def create_synthetic_normal_mixture_data_1D(
 ) -> Data:
 
     design_cov = jnp.diag(vars)
-    x_train = jax.random.normal(shape=(num_train,), key=key) * vars[0] + means[0]
+    x_train = jax.random.normal(
+        shape=(num_train,), key=key) * vars[0] + means[0]
     for i in range(1, len(vars)):
         x_train = jnp.append(
             x_train,
-            jax.random.normal(shape=(num_train,), key=key) * vars[i] + means[i],
+            jax.random.normal(shape=(num_train,), key=key) *
+            vars[i] + means[i],
         )
     x_train = x_train[:, None, None, None]
     x_test = jax.random.normal(shape=(num_test,), key=key) * vars[0] + means[0]
@@ -192,7 +196,8 @@ def create_synthetic_normal_mixture_data_1D(
         )
     x_test = x_test[:, None, None, None]
     if extra_points is not None:
-        x_train = jnp.append(x_train, extra_points[:, None, None, None], axis=0)
+        x_train = jnp.append(
+            x_train, extra_points[:, None, None, None], axis=0)
     if num_val > 0:
         x_val = jax.random.multivariate_normal(
             mean=means,
@@ -270,7 +275,8 @@ def create_synthetic_skewnormal_mixture_data_1D(
         )
     x_test = x_test[:, None, None, None]
     if extra_points is not None:
-        x_train = jnp.append(x_train, extra_points[:, None, None, None], axis=0)
+        x_train = jnp.append(
+            x_train, extra_points[:, None, None, None], axis=0)
     if num_val > 0:
         x_val = jax.random.multivariate_normal(
             mean=means,
@@ -314,9 +320,11 @@ def create_synthetic_fatailed_data_1D(
     key=jax.random.PRNGKey(0),
 ) -> Data:
     x_train = (
-        jax.random.t(df=df, shape=(num_train,), key=key)[:, None, None, None] - mean
+        jax.random.t(df=df, shape=(num_train,), key=key)[
+            :, None, None, None] - mean
     )
-    x_test = jax.random.t(df=df, shape=(num_test,), key=key)[:, None, None, None] - mean
+    x_test = jax.random.t(df=df, shape=(num_test,), key=key)[
+        :, None, None, None] - mean
 
     noise_train = measurement_noise_std * jax.random.normal(
         shape=(num_train, 1, 1, 1), key=key
@@ -372,16 +380,27 @@ def get_mnist_data(num_train: int, num_test: int, batch_size: int = 32) -> Data:
         y_test=y_test,
     )
 
-def get_uci_data(dataset:str,test_size:int|float):
-    # fetch dataset 
+
+def get_uci_data(dataset: str, test_size: int | float, test_pool_quantile: float = .75):
+    # fetch dataset
     from ucimlrepo import fetch_ucirepo
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import StandardScaler
-    uci_data = fetch_ucirepo(dataset) 
-      
+    from sklearn.decomposition import PCA
+    uci_data = fetch_ucirepo(dataset)
+
     x = uci_data.data.features
     scaler = StandardScaler()
-    x = jnp.array(scaler.fit_transform(x)[:,None,None,:])
-    y = jnp.atleast_2d(uci_data.data.targets.values)[:,None,None,:]
-    x_train,x_test,y_train,y_test = train_test_split(x,y,test_size=test_size)
-    return Data(x_train,y_train,x_test,y_test)
+    x = jnp.array(scaler.fit_transform(x))[:, None, None, :]
+    y = jnp.atleast_2d(uci_data.data.targets.values)[:, None, None, :]
+    x_train, x_test, y_train, y_test = train_test_split(
+        x, y, test_size=test_size)
+    pca = PCA(1)
+    projections = pca.fit_transform(x_test.squeeze())
+    q = jnp.quantile(projections, q=test_pool_quantile)
+    test_glob_mask = (projections < q).squeeze()
+    x_test_glob = x_test[test_glob_mask]
+    y_test_glob = y_test[test_glob_mask]
+    x_test_pool = x_test[~test_glob_mask]
+    y_test_pool = y_test[~test_glob_mask]
+    return Data(x_train, y_train, x_test_glob, y_test_glob), Data(x_train, y_train, x_test_pool, y_test_pool)

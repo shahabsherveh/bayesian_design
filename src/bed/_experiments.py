@@ -52,6 +52,7 @@ class Experiment:
         measurement_error,
         data: Data,
         model: NeuralNetworkRegressor,
+        warm_start: int = 10,
         plot_inter_results=False,
         pre_train_model=False,
         training_kwargs={
@@ -59,7 +60,6 @@ class Experiment:
             "learning_rate": 0.01,
             "rngs": nnx.Rngs(0),
         },
-        filter_type="ekf",
     ):
         """
         Initialize sequential experimental design framework.
@@ -97,18 +97,6 @@ class Experiment:
             measurement_error
         )
         self.latent_innovation = latent_innovation
-        filter_class = {"ekf": EKF, "ukf": UKF}.get(filter_type.lower())
-        if filter_class is None:
-            raise ValueError("filter_type must be either 'ekf' or 'ukf'")
-        self.filter = filter_class(
-            model=model,
-            state_prev=self.state_init_prior[0],
-            state_cov_prev=self.state_init_prior[1],
-            state_innovation=self.latent_innovation,
-            measurement_error=self.measurement_error,
-        )
-        # Keep the historical attribute name for existing experiment code.
-        self.ekf = self.filter
 
         self.plot_3D_inter_results = (
             plot_inter_results if self.design_space.shape[-1] == 2 else False
@@ -161,7 +149,7 @@ class Experiment:
             [data.y_train, data.y_test], axis=0)
         return design_space, true_measurements
 
-    def calculate_epig(self, x, x_1=None, **kwargs):
+    def calculate_epig(self, x, filtr, x_1=None, **kwargs):
         """
         Calculate Expected Posterior Predictive Information Gain (EPIG).
 
@@ -188,8 +176,7 @@ class Experiment:
         """
         if x_1 is None:
             x_1 = self.design_space
-        ekf = self.ekf
-        result = ekf.calculate_epig(x, x_1)
+        result = filtr.calculate_epig(x, x_1)
         return result
 
     def calculate_mutual_information_mc(
@@ -294,7 +281,7 @@ class Experiment:
         # return mi.mean(where=~jnp.isnan(mi) & ~jnp.isinf(mi), axis=0).squeeze()
         return jnp.atleast_1d(mi.mean(axis=0).squeeze())
 
-    def calculate_eig(self, x, *arg, **kwargs):
+    def calculate_eig(self, x, filtr, *arg, **kwargs):
         """
         Calculate Expected Information Gain (EIG) about parameters.
 
@@ -315,7 +302,7 @@ class Experiment:
             Monte Carlo estimation. The optimal EIG design is proportional to
             the eigenvector with largest eigenvalue of the prior covariance.
         """
-        eig = self.ekf.calculate_eig(x, *arg, **kwargs)
+        eig = filtr.calculate_eig(x, *arg, **kwargs)
         return jnp.atleast_1d(eig.squeeze())
 
     def calculate_random(self, x, key, **kwargs):
@@ -326,7 +313,7 @@ class Experiment:
         )(key)
         return val
 
-    def optimize(self, criterion_func, method, params={"lr": 1, "max_iters": 50}):
+    def optimize(self, criterion_func, method, filtr, params={"lr": 1, "max_iters": 50}):
         """
         Optimize design using gradient ascent on information criterion.
 
@@ -366,7 +353,8 @@ class Experiment:
         )  # Random keys for randomness in criterion
         keys = jax.vmap(jax.random.key)(seeds)
         if method == "brute_force":
-            pool_values = criterion_func(x=self.design_space, key=keys)
+            pool_values = criterion_func(
+                x=self.design_space, filtr=filtr, key=keys)
             shuffled_indices = jax.random.permutation(
                 jax.random.key(0), self.design_space.shape[0]
             )
@@ -415,6 +403,8 @@ class Experiment:
     def run(
         self,
         criterion_label,
+        filter_type,
+        filter_params,
         epochs,
         optimizer="grid_search",
         optimizer_params={"lr": 1, "max_iters": 50},
@@ -456,15 +446,25 @@ class Experiment:
             Generates synthetic measurements using self.latent_true with
             Gaussian noise. Progress displayed via tqdm.
         """
-        ekf = self.ekf
-        if criterion_label.upper() == "EPIG":
-            criterion_func = self.calculate_epig
-        elif criterion_label.upper() == "EIG":
-            criterion_func = self.calculate_eig
-        elif criterion_label.upper() == "EPIG-MC":
-            criterion_func = self.calculate_epig_mc
-        else:
-            criterion_func = self.calculate_random
+        filter_dict = {'ukf': UKF, 'ekf': EKF}
+        filter_instances = {}
+        for fname, fclass in filter_dict.items():
+            filter_instances[fname] = fclass(
+                model=self.model,
+                state_prev=self.state_init_prior[0],
+                state_cov_prev=self.state_init_prior[1],
+                state_innovation=self.latent_innovation,
+                measurement_error=self.measurement_error,
+                **filter_params
+            )
+        criterion_dict = {
+            "EPIG": self.calculate_epig,
+            "EIG": self.calculate_eig,
+            "EPIG-MC": self.calculate_epig_mc,
+            "RANDOM": self.calculate_random}
+        criterion_func = criterion_dict.get(
+            criterion_label, self.calculate_random
+        )
         designs = []
         crit_values = []
         rmse_values = []
@@ -503,8 +503,8 @@ class Experiment:
                 axes_3D[i, 0].set_ylabel("x2")
 
         for i in progress_bar:
-            rmse = self.calculate_rmse()
-            estimate_mean, estimate_cov = ekf.state_prior
+            rmse = self.calculate_rmse(filtr)
+            estimate_mean, estimate_cov = filtr.state_prior
             predictions = self.model(
                 estimate_mean.reshape(-1, 1), self.data.x_val
             ).squeeze()
@@ -513,6 +513,7 @@ class Experiment:
             )
             best_index, x_opt, crit_value = self.optimize(
                 criterion_func=criterion_func,
+                filtr=filtr,
                 method=optimizer,
                 params=optimizer_params,
             )
@@ -562,7 +563,7 @@ class Experiment:
                     #     draggable=True,
                     # )
 
-            ekf.state_prior = ekf.get_state_posterior(
+            filtr.state_prior = filtr.get_state_posterior(
                 measurement, x_opt[None, ...])
             # latent_estimates = multivariate_normal(
             #     mean=ekf.state_prior[0].flatten(), cov=ekf.state_prior[1]
@@ -585,9 +586,10 @@ class Experiment:
             crit_values,
             design_space=self.design_space,
             crit_label=criterion_label,
+            filter_type=filter_type
         )
 
-    def calculate_rmse(self):
+    def calculate_rmse(self, filtr):
         """
         Calculate root mean squared error for predictions.
 
@@ -598,15 +600,8 @@ class Experiment:
         Returns:
             Average RMSE across all prediction locations (scalar)
         """
-        sigma = self.ekf.state_prior[1]
-        param_estimate = self.ekf.state_prior[0].reshape(-1, 1)
-
-        H = self.model.jacobian(param_estimate, self.data.x_val)
-        HT = jnp.matrix_transpose(H)
-        pred_vars = H @ sigma @ HT + self.measurement_error
-        rmse_pred = jnp.sqrt(jnp.mean(pred_vars))
-        # if rmse_pred > 10:
-        #     breakpoint()
+        mean, cov = filtr.measurement_prior(self.design_space)
+        rmse_pred = (cov**.5).mean()
         return rmse_pred
 
     def calculate_rmse_params(self, estimate_mean, latent_true):
@@ -643,7 +638,9 @@ class Experiment:
 
     def run_experiment(
         self,
-        experiments=["EPIG", "EIG", "EPIG-MC", "RAND"],
+        criteria=["EPIG", "EIG", "EPIG-MC", "RAND"],
+        filter_types=["ukf", "ekf"],
+        filter_params=[{}, {}],
         iterations=10,
         optimizer_method="brute_force",
         optimizer_params={"lr": 1, "max_iters": 50},
@@ -666,35 +663,40 @@ class Experiment:
             independent EKF state evolution.
         """
         results = []
-        instances = [deepcopy(self) for _ in experiments]
+        instances = [deepcopy(self) for _ in criteria]
         if self.plot_2D_inter_results:
             fig, axes = plt.subplots(
-                6, len(experiments), figsize=(165 / 25.4, 165 / 25.4), sharex=True
+                6, len(criteria), figsize=(165 / 25.4, 165 / 25.4), sharex=True
             )
             fig.subplots_adjust(hspace=0.3, wspace=0.536, right=0.85)
-            for i, experiment in enumerate(experiments):
-                axes[0, i].set_title(f"{experiment} Strategy")
+            for i, criterion in enumerate(criteria):
+                axes[0, i].set_title(f"{criterion} Strategy")
                 axes[-1, i].set_xlabel("Design (x)")
             for i in range(6):
                 axes[i, 0].set_ylabel("y")
 
-        for i, experiment in enumerate(experiments):
-            self_copy = instances[i]
-            try:
-                r = self_copy.run(
-                    criterion_label=experiment,
-                    epochs=iterations,
-                    optimizer=optimizer_method,
-                    optimizer_params=optimizer_params,
-                    axes_2D=axes[:, i]
-                    if self.plot_2D_inter_results and len(experiments) > 1
-                    else None,
-                )
-                results.append(r)
-            except Exception as e:
-                raise (e)
-                print(e)
+        for i, filter_type in enumerate(filter_types):
+            filter_kwargs = filter_params[i]
+            for j, criterion in enumerate(criteria):
+                self_copy = instances[j]
+                try:
+                    r = self_copy.run(
+                        criterion_label=criterion,
+                        filter_type=filter_type,
+                        filter_params=filter_kwargs,
+                        epochs=iterations,
+                        optimizer=optimizer_method,
+                        optimizer_params=optimizer_params,
+                        axes_2D=axes[:, j]
+                        if self.plot_2D_inter_results and len(criterion) > 1
+                        else None,
+                    )
+                    results.append(r)
+                except Exception as e:
+                    raise (e)
+                    print(e)
 
+        breakpoint()
         return MultiExperimentResults(results)
 
     def plot_crit(
@@ -990,6 +992,7 @@ class ExperimentResults:
         designs,
         crit_values,
         crit_label="EPIG",
+        filter_type="ekf",
         design_space=None,
     ):
         """
@@ -1008,6 +1011,7 @@ class ExperimentResults:
         self.designs = designs
         self.crit_values = crit_values
         self.crit_label = crit_label
+        self.filter_type = filter_type
         self.design_space = design_space
 
     def plot_results(self):
@@ -1025,7 +1029,8 @@ class ExperimentResults:
         gs = GridSpec(2, 2, figure=fig)
         ax_crit = fig.add_subplot(gs[0, :])
         ax_crit.plot(self.crit_values, marker="o")
-        ax_crit.set_title(f"{self.crit_label} Values over Iterations")
+        ax_crit.set_title(
+            f"{self.crit_label} Values over Iterations ")
         ax_crit.set_xlabel("Iteration")
         ax_crit.set_ylabel(self.crit_label)
 
@@ -1035,7 +1040,7 @@ class ExperimentResults:
         ax_rmse.set_xlabel("Iteration")
         ax_rmse.set_ylabel("RMSE")
 
-        fig.suptitle(f"{self.crit_label} optimization")
+        fig.suptitle(f"{self.crit_label} optimization by {self.filter_type}")
 
 
 class MultiExperimentResults:

@@ -23,7 +23,8 @@ variance = 0.05
 dim = 1
 
 [experiment]
-filter_type = "ukf"
+filter_type = ["ukf","ekf"]
+filter_params=[{},{}]
 latent_innovation = 0.01
 plot_inter_results = false
 pre_train_model = true

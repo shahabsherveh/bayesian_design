@@ -93,8 +93,8 @@ def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
             batch_size=data_cfg.get("batch_size", 32),
         )
     if kind == "uci":
-        dataset= data_cfg["name"]
-        test_size=data_cfg['test_size']
+        dataset = data_cfg["name"]
+        test_size = data_cfg['test_size']
         return get_uci_data(dataset=dataset, test_size=test_size)
 
     model_true = deepcopy(model)
@@ -102,7 +102,8 @@ def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
         key = jax.random.PRNGKey(truth_cfg.get("seed", 1234))
         scale = truth_cfg.get("scale", 1.0)
         bias = truth_cfg.get("bias", 0.0)
-        latent_true = scale * jax.random.normal(key, (model.weight_size, 1)) + bias
+        latent_true = scale * \
+            jax.random.normal(key, (model.weight_size, 1)) + bias
         state_true = model_true.weights_to_state(latent_true)
         nnx.update(model_true, state_true)
 
@@ -168,7 +169,8 @@ def run_experiment_from_config(
     from flax import nnx
     from bed.experiments import Experiment
     cfg = _load_config(config)
-    jax.config.update("jax_enable_x64", cfg.get("runtime", {}).get("x64", True))
+    jax.config.update("jax_enable_x64", cfg.get(
+        "runtime", {}).get("x64", True))
 
     model, wrapped_model = _build_model(cfg["model"])
     latent_cov = _build_latent_cov(model, cfg["latent_cov"])
@@ -181,7 +183,8 @@ def run_experiment_from_config(
     }
 
     measurement_cfg = cfg["measurement_error"]
-    measurement_error = measurement_cfg["variance"] * jnp.eye(measurement_cfg["dim"])
+    measurement_error = measurement_cfg["variance"] * \
+        jnp.eye(measurement_cfg["dim"])
 
     if dry_run:
         return {
@@ -204,15 +207,17 @@ def run_experiment_from_config(
         ),
         pre_train_model=cfg["experiment"].get("pre_train_model", False),
         training_kwargs=training_kwargs,
-        filter_type=cfg["experiment"].get("filter_type", "ekf"),
     )
 
     run_cfg = cfg["run"]
     results = experiment.run_experiment(
-        experiments=strategies or run_cfg["strategies"],
+        criteria=strategies or run_cfg["strategies"],
         iterations=iterations or run_cfg["iterations"],
         optimizer_method=run_cfg.get("optimizer_method", "brute_force"),
-        optimizer_params=run_cfg.get("optimizer_params", {"lr": 1, "max_iters": 50}),
+        optimizer_params=run_cfg.get(
+            "optimizer_params", {"lr": 1, "max_iters": 50}),
+        filter_types=cfg["experiment"].get("filter_type", ["ekf"]),
+        filter_params=cfg["experiment"].get("filter_params", {})
     )
     if show_plot:
         results.plot_comparison()
@@ -276,7 +281,9 @@ def experiment(
     )
     if dry_run:
         print(result)
+
+
 if __name__ == "__main__":
-   results = run_experiment_from_config(
-       config="experiment_4",
-   )
+    results = run_experiment_from_config(
+        config="experiment_4",
+    )
