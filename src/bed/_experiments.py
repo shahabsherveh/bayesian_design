@@ -67,7 +67,8 @@ class Experiment:
         """
         if latent_cov is None:
             if latent_var is None:
-                raise TypeError("Either latent_cov or latent_var must be provided.")
+                raise TypeError(
+                    "Either latent_cov or latent_var must be provided.")
             latent_cov = latent_var * jnp.eye(model.flax_model.weight_size)
         if measurement_error is None:
             raise TypeError("measurement_error must be provided.")
@@ -490,11 +491,11 @@ class Experiment:
             filtr.state_prior = posterior_mean, posterior_cov
             progress_bar.set_postfix(
                 {
-                    "Global SD": sd_glob.round(2),
-                    "Pool SD": sd_pool.round(2),
-                    "Global RMSE": rmse_predictions_glob.round(2),
-                    "Pool RMSE": rmse_predictions_pool.round(2),
-                    f"{criterion_label}": crit_value.round(3),
+                    "Global SD": f"{sd_glob.round(2):.2f}",
+                    "Pool SD": f"{sd_pool.round(2):.2f}",
+                    "Global RMSE": f"{rmse_predictions_glob.round(2):.2f}",
+                    "Pool RMSE": f"{rmse_predictions_pool.round(2):.2f}",
+                    f"{criterion_label}": f"{crit_value.round(3):.2f}",
                 }
             )
             designs.append(x_opt)

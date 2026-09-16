@@ -19,13 +19,13 @@ type = "he_diagonal"
 scale = 2
 
 [measurement_error]
-variance = 0.1
+variance = 0.001
 dim = 1
 
 [experiment]
 filter_type = ["ukf"]
 filter_params=[{}]
-latent_innovation = 1
+latent_innovation = 0.0001
 pre_train_model = false
 
 [training]
@@ -34,7 +34,7 @@ epochs = 200
 seed = 0
 
 [run]
-strategies = ["EPIG"]
+strategies = ["EIG"]
 iterations = 190
 optimizer_method = "brute_force"
 warm_start = 10

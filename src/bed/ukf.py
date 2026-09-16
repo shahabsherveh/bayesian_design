@@ -24,7 +24,7 @@ class UKF:
         state_cov_prev,
         state_innovation,
         measurement_error,
-        alpha=0.1,
+        alpha=0.001,
         beta=2.0,
         kappa=0.0,
     ):
