@@ -11,6 +11,7 @@ This module implements various models for optimal experimental design including:
 
 from copy import deepcopy
 from functools import partial
+from typing import Callable
 
 import cvxpy as cp
 import jax.numpy as jnp
@@ -992,13 +993,23 @@ class FlaxModel(nnx.Module):
 
 
 class DenseNN(FlaxModel):
-    """Fully connected network with GELU hidden activations."""
+    """Fully connected network with configurable hidden activations."""
 
     def __init__(
-            self, input_dim, hidden_dims, output_dim, rngs: nnx.Rngs
+            self,
+            input_dim,
+            hidden_dims,
+            output_dim,
+            rngs: nnx.Rngs,
+            activation="gelu",
     ):
-        """Create a dense network and record its flattened parameter layout."""
+        """Create a dense network with the requested hidden activations.
+
+        ``activation`` may be one activation name/callable applied to every
+        hidden layer, or a sequence with one activation per hidden layer.
+        """
         nodes = [input_dim] + hidden_dims + [output_dim]
+        self.activations = self._resolve_activations(activation, len(hidden_dims))
         self.layers = nnx.List()
         for i in range(len(nodes)-1):
             self.layers.append(nnx.Linear(nodes[i], nodes[i + 1], rngs=rngs, kernel_init=nnx.nn.initializers.variance_scaling(
@@ -1008,19 +1019,75 @@ class DenseNN(FlaxModel):
         self.output_dim = output_dim
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
+    @staticmethod
+    def _resolve_activations(activation, hidden_count):
+        available = {
+            "gelu": nnx.gelu,
+            "relu": nnx.relu,
+            "sigmoid": nnx.sigmoid,
+            "tanh": jnp.tanh,
+            "silu": nnx.silu,
+            "swish": nnx.silu,
+            "elu": nnx.elu,
+            "leaky_relu": nnx.leaky_relu,
+            "identity": lambda value: value,
+            "linear": lambda value: value,
+        }
+        requested = (
+            [activation] * hidden_count
+            if isinstance(activation, str) or callable(activation)
+            else list(activation)
+        )
+        if len(requested) != hidden_count:
+            raise ValueError(
+                "activation must be a single function/name or one per hidden layer."
+            )
+        resolved = []
+        for function in requested:
+            if isinstance(function, str):
+                try:
+                    function = available[function.lower()]
+                except KeyError as error:
+                    raise ValueError(
+                        f"Unsupported activation '{function}'. "
+                        f"Choose from: {', '.join(sorted(available))}."
+                    ) from error
+            if not callable(function):
+                raise TypeError("Each activation must be a callable or supported name.")
+            resolved.append(function)
+        return tuple(resolved)
+
     def __call__(self, x, rngs: nnx.Rngs | None = None):
-        """Apply hidden GELU layers followed by a linear output layer."""
+        """Apply hidden activations followed by a linear output layer."""
         output = x
-        for l in self.layers[:-1]:
-            output = nnx.gelu(l(
-                output,
-            ))
+        for layer, activation in zip(self.layers[:-1], self.activations):
+            output = activation(layer(output))
         output = self.layers[-1](output)
         return output
 
     def _validate_input(self, x):
         """Check that the leading input dimension matches ``input_dim``."""
         assert x.shape[0] == self.input_dim, "Input x has incorrect dimensionality."
+
+
+class NNFLax(DenseNN):
+    """Backward-compatible dense network constructor."""
+
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim_0,
+        hidden_dim_1,
+        rngs: nnx.Rngs,
+        activation="gelu",
+    ):
+        super().__init__(
+            input_dim=input_dim,
+            hidden_dims=[hidden_dim_0, hidden_dim_1],
+            output_dim=1,
+            rngs=rngs,
+            activation=activation,
+        )
 
 
 class LinearNN(FlaxModel):

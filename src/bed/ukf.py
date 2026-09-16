@@ -88,21 +88,24 @@ class UKF:
         if jnp.ndim(x) == 3:
             x = x[None, ...]
         sigma_points, sigma_weights_m, sigma_weights_c = self.sigma_points
-        latent_mean = sigma_points[:1]
         values = self._measurements(sigma_points, x)
-        mean = jnp.sum(values * sigma_weights_m, axis=1)
-        deviations = values - jnp.expand_dims(mean, axis=1)
+        values = values.reshape(values.shape[0], values.shape[1], -1)
+        weights_mean = sigma_weights_m.reshape(-1)
+        weights_cov = sigma_weights_c.reshape(-1)
+        mean = jnp.sum(values * weights_mean[None, :, None], axis=1)
+        deviations = values - mean[:, None, :]
         # The transformed covariance includes observation noise independently
         # of the uncertainty induced by the sigma-point state distribution.
         covariance = (
-            jnp.sum(sigma_weights_c *
-                    deviations * deviations, axis=1)
+            jnp.einsum("k,bka,bkc->bac", weights_cov,
+                       deviations, deviations)
             + self.measurement_error
         )
-        cross_covariance = jnp.sum(
-            jnp.expand_dims(sigma_points - latent_mean, axis=[
-                            0, 2, 4]) @ (sigma_weights_c * deviations),
-            axis=1
+        cross_covariance = jnp.einsum(
+            "k,kn,bkm->bnm",
+            weights_cov,
+            sigma_points - sigma_points[0],
+            deviations,
         )
         return mean, covariance, cross_covariance
 

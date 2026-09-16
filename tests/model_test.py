@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from bed.models import LinearModel, NNFLax, NeuralNetworkRegressor
+from bed.models import DenseNN, LinearModel, NNFLax, NeuralNetworkRegressor
 import jax
 from flax import nnx
 
@@ -139,3 +139,29 @@ class TestNeuralNetworkModel:
 
     def test_train(self):
         model = self.model.train(self.x_train, self.y_train, num_epochs=100)
+
+    def test_dense_network_accepts_per_layer_activations(self):
+        model = DenseNN(
+            input_dim=2,
+            hidden_dims=[3, 3],
+            output_dim=1,
+            rngs=nnx.Rngs(2),
+            activation=["relu", "tanh"],
+        )
+        output = model(jnp.ones((4, 2)))
+        assert output.shape == (4, 1)
+        assert len(model.activations) == 2
+
+    def test_dense_network_rejects_wrong_activation_count(self):
+        try:
+            DenseNN(
+                input_dim=2,
+                hidden_dims=[3, 3],
+                output_dim=1,
+                rngs=nnx.Rngs(2),
+                activation=["relu"],
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Expected one activation per hidden layer.")

@@ -39,18 +39,16 @@ class Experiment:
 
     def __init__(
         self,
-        latent_cov,
-        latent_innovation,
-        measurement_error,
-        data: Data,
-        model: NeuralNetworkRegressor,
+        latent_cov=None,
+        latent_innovation=0,
+        measurement_error=None,
+        data: Data = None,
+        model: NeuralNetworkRegressor = None,
+        latent_var=None,
         warm_start: int = 10,
         pre_train_model=False,
-        training_kwargs={
-            "epochs": 200,
-            "learning_rate": 0.01,
-            "rngs": nnx.Rngs(0),
-        },
+        training_kwargs=None,
+        plot_inter_results=False,
     ):
         """
         Initialize sequential experimental design framework.
@@ -67,6 +65,19 @@ class Experiment:
             plot_results: If True, plot optimization surfaces during run
             filter_type: State estimator to use, either ``"ekf"`` or ``"ukf"``.
         """
+        if latent_cov is None:
+            if latent_var is None:
+                raise TypeError("Either latent_cov or latent_var must be provided.")
+            latent_cov = latent_var * jnp.eye(model.flax_model.weight_size)
+        if measurement_error is None:
+            raise TypeError("measurement_error must be provided.")
+        if training_kwargs is None:
+            training_kwargs = {
+                "epochs": 200,
+                "learning_rate": 0.01,
+                "rngs": nnx.Rngs(0),
+            }
+
         self.model = (
             model
             if not pre_train_model
@@ -348,9 +359,10 @@ class Experiment:
             )
             # shuffled_indices = jnp.arange(self.design_space.shape[0])
             pool_values_shuffled = pool_values[shuffled_indices]
-            best_index = shuffled_indices[jnp.argmax(pool_values_shuffled)]
+            best_position = jnp.argmax(pool_values_shuffled)
+            best_index = shuffled_indices[best_position]
             x = self.design_space[best_index]
-            crit_value = pool_values_shuffled[best_index]
+            crit_value = pool_values_shuffled[best_position]
         elif method == "gradient_ascent":
             x = np.random.normal(
                 size=self.design_space[:1].shape,

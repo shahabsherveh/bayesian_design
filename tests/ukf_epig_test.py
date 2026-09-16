@@ -44,6 +44,33 @@ def test_epig_equals_ekf_closed_form_for_linear_model():
     assert jnp.all(epig_ukf > 0)
 
 
+def test_predictive_moments_match_for_linear_model():
+    ekf, ukf = _filters(hidden_dims=[], prior_var=0.5)
+    x = _designs(jax.random.PRNGKey(10), 5, 2)
+    ekf_mean, ekf_cov = ekf.measurement_prior(x)
+    ukf_mean, ukf_cov = ukf.measurement_prior(x)
+
+    assert jnp.allclose(
+        ukf_mean.reshape(ekf_mean.shape), ekf_mean, rtol=1e-10, atol=1e-12
+    )
+    assert jnp.allclose(
+        ukf_cov.reshape(ekf_cov.shape), ekf_cov, rtol=1e-10, atol=1e-12
+    )
+
+
+def test_posterior_state_matches_for_linear_model():
+    ekf, ukf = _filters(hidden_dims=[], prior_var=0.5)
+    x = _designs(jax.random.PRNGKey(11), 1, 2)
+    measurement = jnp.array([[0.7]])
+    ekf_mean, ekf_cov = ekf.get_state_posterior(measurement, x)
+    ukf_mean, ukf_cov = ukf.get_state_posterior(measurement, x)
+
+    assert jnp.allclose(
+        ukf_mean.reshape(ekf_mean.shape), ekf_mean, rtol=1e-10, atol=1e-12
+    )
+    assert jnp.allclose(ukf_cov, ekf_cov, rtol=1e-10, atol=1e-12)
+
+
 def test_epig_matches_gaussian_mutual_information_of_sigma_point_joint():
     # Independent computation: assemble the 2x2 joint covariance of (y, y'_j) from the
     # same sigma points and evaluate the Gaussian mutual information through the

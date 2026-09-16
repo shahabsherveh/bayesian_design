@@ -46,6 +46,9 @@ def _build_model(model_cfg: dict):
             hidden_dims=model_cfg["hidden_dims"],
             output_dim=model_cfg["output_dim"],
             rngs=nnx.Rngs(seed),
+            activation=model_cfg.get(
+                "activations", model_cfg.get("activation", "gelu")
+            ),
         )
         wrapper = NeuralNetworkRegressor(model)
     elif model_type == "CNN":
@@ -99,7 +102,11 @@ def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
     if kind == "uci":
         dataset = data_cfg["name"]
         test_size = data_cfg['test_size']
-        return get_uci_data(dataset=dataset, test_size=test_size)
+        return get_uci_data(
+            dataset=dataset,
+            test_size=test_size,
+            random_state=data_cfg.get("seed", 0),
+        )
 
     model_true = deepcopy(model)
     if truth_cfg and truth_cfg.get("enabled", True):
@@ -214,14 +221,19 @@ def run_experiment_from_config(
     )
 
     run_cfg = cfg["run"]
+    filter_type = cfg["experiment"].get("filter_type", ["ekf"])
+    filter_types = [filter_type] if isinstance(filter_type, str) else filter_type
+    filter_params = cfg["experiment"].get("filter_params", [{}])
+    if isinstance(filter_params, dict):
+        filter_params = [filter_params]
     results = experiment.run_experiment(
         criteria=strategies or run_cfg["strategies"],
         iterations=iterations or run_cfg["iterations"],
         optimizer_method=run_cfg.get("optimizer_method", "brute_force"),
         optimizer_params=run_cfg.get(
             "optimizer_params", {"lr": 1, "max_iters": 50}),
-        filter_types=cfg["experiment"].get("filter_type", ["ekf"]),
-        filter_params=cfg["experiment"].get("filter_params", {})
+        filter_types=filter_types,
+        filter_params=filter_params,
     )
     # if show_plot:
     #     results.plot_comparison()
@@ -264,6 +276,9 @@ def experiment(
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Validate config and print execution summary."
+    ),
+    no_plot: bool = typer.Option(
+        False, "--no-plot", help="Do not display experiment plots."
     ),
 ):
     """Run an experiment from a TOML configuration file."""

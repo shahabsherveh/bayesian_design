@@ -7,6 +7,23 @@ from scipy import stats
 from bed.models import FlaxModel
 
 
+def _evaluate_model(model, x):
+    """Evaluate Flax models and plain callable test doubles uniformly."""
+    if isinstance(model, FlaxModel):
+        return model(x, rngs=None)
+    return model(x)
+
+
+def _reshape_outputs(values, count):
+    """Normalize model outputs to one row per generated design."""
+    values = jnp.asarray(values)
+    if values.shape[0] == count:
+        return values.reshape(count, -1)
+    if values.shape[-1] == count:
+        return jnp.moveaxis(values, -1, 0).reshape(count, -1)
+    return values.reshape(count, -1)
+
+
 class Data:
     """Hold training, candidate-pool, and optional global test data.
 
@@ -36,6 +53,7 @@ class Data:
         self.measurement_noise_std = (
             measurement_noise_std if measurement_noise_std is not None else 0.0
         )
+        self._observation_key = jax.random.PRNGKey(0)
 
     @property
     def x_test(self):
@@ -82,17 +100,27 @@ class Data:
         by ``underlying_model`` and optionally receive measurement noise.
         """
         index = jnp.asarray(index)
-        if jnp.issubdtype(index.dtype, jnp.integer):
+        if index.ndim == 0 and jnp.issubdtype(index.dtype, jnp.integer):
             obs = self.y_train[index]
         else:
             if self.underlying_model is None:
+                train_matches = jnp.all(self.x_train == index, axis=-1)
+                test_matches = jnp.all(self.x_test_pool == index, axis=-1)
+                if jnp.any(train_matches):
+                    return self.y_train[jnp.argmax(train_matches)]
+                if jnp.any(test_matches):
+                    return self.y_test_pool[jnp.argmax(test_matches)]
                 raise ValueError(
-                    "A non-integer design requires an underlying_model."
+                    "A design requires an underlying_model unless it is stored "
+                    "in the training or test pool."
                 )
-            obs = self.underlying_model(index, rngs=None).squeeze()
+            obs = _evaluate_model(self.underlying_model, index).squeeze()
             if has_noise:
+                self._observation_key, noise_key = jax.random.split(
+                    self._observation_key
+                )
                 noise = self.measurement_noise_std * jax.random.normal(
-                    shape=obs.shape, key=jax.random.PRNGKey(0)
+                    shape=obs.shape, key=noise_key
                 )
             else:
                 noise = 0.0
@@ -139,29 +167,36 @@ def create_synthetic_data(
 
     design_mean = jnp.zeros(input_dim)
 
+    key_train, key_test, key_noise_train, key_noise_test = jax.random.split(key, 4)
     x_train = jax.random.multivariate_normal(
         mean=design_mean,
         cov=design_cov,
         shape=(num_train,),
-        key=key,
+        key=key_train,
         method="svd",
     )[:, None, None, :]
     x_test = jax.random.multivariate_normal(
         mean=design_mean,
         cov=design_cov,
         shape=(num_test,),
-        key=key,
+        key=key_test,
         method="svd",
     )[:, None, None, :]
     noise_train = measurement_noise_std * jax.random.normal(
-        shape=(num_train, 1, 1, output_dim), key=key
+        shape=(num_train, output_dim), key=key_noise_train
     )
     noise_test = measurement_noise_std * jax.random.normal(
-        shape=(num_test, 1, 1, output_dim), key=key
+        shape=(num_test, output_dim), key=key_noise_test
     )
 
-    y_train = model(x_train, rngs=None) + noise_train
-    y_test = model(x_test, rngs=None) + noise_test
+    y_train = _reshape_outputs(
+        _evaluate_model(model, x_train), num_train
+    )
+    y_test = _reshape_outputs(
+        _evaluate_model(model, x_test), num_test
+    )
+    y_train = y_train + noise_train
+    y_test = y_test + noise_test
     return Data(x_train, y_train, x_test, y_test, underlying_model=model)
 
 
@@ -178,8 +213,8 @@ def create_synthetic_normal_with_outliers_data_1D(
     x_train = jax.random.normal(shape=(num_train,), key=key) * var + mean
     x_test = jax.random.normal(shape=(num_test,), key=key) * var + mean
     x_test = jnp.append(x_test, outliers)
-    y_train = model(x_train, rngs=None)
-    y_test = model(x_test, rngs=None)
+    y_train = _evaluate_model(model, x_train)
+    y_test = _evaluate_model(model, x_test)
     return Data(
         x_train=x_train[:, None, None, None],
         x_test=x_test[:, None, None, None],
@@ -203,20 +238,25 @@ def create_synthetic_normal_mixture_data_1D(
     """Generate a one-dimensional mixture of normal design distributions."""
 
     design_cov = jnp.diag(vars)
+    keys = iter(jax.random.split(key, 2 * len(vars) + 4))
     x_train = jax.random.normal(
-        shape=(num_train,), key=key) * vars[0] + means[0]
+        shape=(num_train,), key=next(keys)) * vars[0] + means[0]
     for i in range(1, len(vars)):
         x_train = jnp.append(
             x_train,
-            jax.random.normal(shape=(num_train,), key=key) *
+            jax.random.normal(shape=(num_train,), key=next(keys)) *
             vars[i] + means[i],
         )
     x_train = x_train[:, None, None, None]
-    x_test = jax.random.normal(shape=(num_test,), key=key) * vars[0] + means[0]
+    x_test = jax.random.normal(
+        shape=(num_test,), key=next(keys)
+    ) * vars[0] + means[0]
     for i in range(1, len(vars)):
         x_test = jnp.append(
             x_test,
-            jax.random.normal(shape=(num_test,), key=key) * vars[i] + means[i],
+            jax.random.normal(
+                shape=(num_test,), key=next(keys)
+            ) * vars[i] + means[i],
         )
     x_test = x_test[:, None, None, None]
     if extra_points is not None:
@@ -227,23 +267,23 @@ def create_synthetic_normal_mixture_data_1D(
             mean=means,
             cov=design_cov,
             shape=(num_val,),
-            key=key,
+            key=next(keys),
             method="svd",
         ).flatten()[:, None, None, None]
-        y_val = model(x_val, rngs=None)
+        y_val = _evaluate_model(model, x_val)
     else:
         x_val = None
         y_val = None
 
     extra_count = 0 if extra_points is None else len(extra_points)
     noise_train = measurement_noise_std * jax.random.normal(
-        shape=(len(vars) * num_train + extra_count, 1, 1, 1), key=key
+        shape=(len(vars) * num_train + extra_count, 1, 1, 1), key=next(keys)
     )
     noise_test = measurement_noise_std * jax.random.normal(
-        shape=(len(vars) * num_test, 1, 1, 1), key=key
+        shape=(len(vars) * num_test, 1, 1, 1), key=next(keys)
     )
-    y_train = model(x_train, rngs=None) + noise_train
-    y_test = model(x_test, rngs=None) + noise_test
+    y_train = _evaluate_model(model, x_train) + noise_train
+    y_test = _evaluate_model(model, x_test) + noise_test
     return Data(
         x_train,
         y_train,
@@ -311,7 +351,7 @@ def create_synthetic_skewnormal_mixture_data_1D(
             key=key,
             method="svd",
         ).flatten()[:, None, None, None]
-        y_val = model(x_val, rngs=None)
+        y_val = _evaluate_model(model, x_val)
     else:
         x_val = None
         y_val = None
@@ -323,8 +363,8 @@ def create_synthetic_skewnormal_mixture_data_1D(
     noise_test = measurement_noise_std * jax.random.normal(
         shape=(len(vars) * num_test, 1, 1, 1), key=key
     )
-    y_train = model(x_train, rngs=None) + noise_train
-    y_test = model(x_test, rngs=None) + noise_test
+    y_train = _evaluate_model(model, x_train) + noise_train
+    y_test = _evaluate_model(model, x_test) + noise_test
     return Data(
         x_train,
         y_train,
@@ -360,8 +400,8 @@ def create_synthetic_fatailed_data_1D(
     noise_test = measurement_noise_std * jax.random.normal(
         shape=(num_test, 1, 1, 1), key=key
     )
-    y_train = model(x_train, rngs=None) + noise_train
-    y_test = model(x_test, rngs=None) + noise_test
+    y_train = _evaluate_model(model, x_train) + noise_train
+    y_test = _evaluate_model(model, x_test) + noise_test
     return Data(x_train, y_train, x_test, y_test, underlying_model=model)
 
 
@@ -405,12 +445,17 @@ def get_mnist_data(num_train: int, num_test: int, batch_size: int = 32) -> Data:
     return Data(
         x_train=jnp.array(x_train),
         y_train=y_train,
-        x_test=jnp.array(x_test),
-        y_test=y_test,
+        x_test_pool=jnp.array(x_test),
+        y_test_pool=y_test,
     )
 
 
-def get_uci_data(dataset: str, test_size: int | float, test_pool_quantile: float = .75):
+def get_uci_data(
+    dataset: str,
+    test_size: int | float,
+    test_pool_quantile: float = .75,
+    random_state: int = 0,
+):
     """Load a UCI dataset and split its test set into pool and global subsets."""
     # fetch dataset
     from ucimlrepo import fetch_ucirepo
@@ -424,7 +469,7 @@ def get_uci_data(dataset: str, test_size: int | float, test_pool_quantile: float
     x = jnp.array(scaler.fit_transform(x))[:, None, None, :]
     y = jnp.atleast_2d(uci_data.data.targets.values)[:, None, None, :]
     x_train, x_test, y_train, y_test = train_test_split(
-        x, y, test_size=test_size)
+        x, y, test_size=test_size, random_state=random_state)
     pca = PCA(1)
     projections = pca.fit_transform(x_test.squeeze())
     q = jnp.quantile(projections, q=test_pool_quantile)
