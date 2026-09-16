@@ -5,14 +5,20 @@ x64 = true
 [model]
 type = "DNN"
 seed = 0
-input_dim = 8
-hidden_dims = [8,8]
+input_dim = 1
+hidden_dims = [16,16]
 output_dim = 1
 
 [data]
-kind = "uci"
-name = "Concrete Compressive Strength"
-test_size = 0.2
+kind = "1d_regression"
+[data.outcome_model]
+type="DNN"
+seed=0
+input_dim=1
+hidden_dims=[21]
+output_dim=1
+activation='tanh'
+
 
 [latent_cov]
 type = "he_diagonal"
@@ -24,8 +30,8 @@ dim = 1
 
 [experiment]
 filter_type = ["ukf", "ekf"]
-filter_params=[{alpha=0.001},{}]
-latent_innovation = 0
+filter_params=[{alpha=10},{}]
+latent_innovation = 0.1
 pre_train_model = false
 
 [training]

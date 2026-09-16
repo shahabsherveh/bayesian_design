@@ -167,7 +167,8 @@ def create_synthetic_data(
 
     design_mean = jnp.zeros(input_dim)
 
-    key_train, key_test, key_noise_train, key_noise_test = jax.random.split(key, 4)
+    key_train, key_test, key_noise_train, key_noise_test = jax.random.split(
+        key, 4)
     x_train = jax.random.multivariate_normal(
         mean=design_mean,
         cov=design_cov,
@@ -455,6 +456,7 @@ def get_uci_data(
     test_size: int | float,
     test_pool_quantile: float = .75,
     random_state: int = 0,
+    **kwargs
 ):
     """Load a UCI dataset and split its test set into pool and global subsets."""
     # fetch dataset
@@ -479,3 +481,24 @@ def get_uci_data(
     x_test_pool = x_test[~test_glob_mask]
     y_test_pool = y_test[~test_glob_mask]
     return Data(x_train, y_train, x_test_pool, y_test_pool, x_test_glob, y_test_glob)
+
+
+def get_1d_regression(model, train_size=200, test_pool_size=50, test_glob_size=50, interval_train=[-5, 5], interval_test_pool=[2, 4], key=jax.random.key(0)):
+    keys = jax.random.split(key, 3)
+    x_train = jax.random.uniform(shape=(train_size, 1, 1, 1),
+                                 minval=interval_train[0], maxval=interval_train[1], key=keys[0])
+    y_train = _evaluate_model(model, x_train)
+    x_test_glob = jax.random.uniform(shape=(test_glob_size, 1, 1, 1),
+                                     minval=interval_train[0], maxval=interval_train[1], key=keys[1])
+    y_test_glob = _evaluate_model(model, x_test_glob)
+    x_test_pool = jax.random.uniform(shape=(
+        test_pool_size, 1, 1, 1), minval=interval_test_pool[0], maxval=interval_test_pool[1], key=keys[2])
+    y_test_pool = _evaluate_model(model, x_test_pool)
+    return Data(
+        x_train,
+        y_train,
+        x_test_pool,
+        y_test_pool,
+        x_test_glob,
+        y_test_glob
+    )

@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 # import matplotlib.pyplot as plt
 
-from bed.data import get_uci_data
+from bed.data import get_1d_regression, get_uci_data
 
 
 app = typer.Typer()
@@ -80,7 +80,7 @@ def _build_latent_cov(model, latent_cfg: dict):
     raise ValueError(f"Unsupported latent covariance type: {cov_type}")
 
 
-def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
+def _build_data(data_cfg: dict):
     """Construct a configured dataset and optional synthetic ground truth."""
     import jax
     import jax.numpy as jnp
@@ -108,15 +108,8 @@ def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
             random_state=data_cfg.get("seed", 0),
         )
 
-    model_true = deepcopy(model)
-    if truth_cfg and truth_cfg.get("enabled", True):
-        key = jax.random.PRNGKey(truth_cfg.get("seed", 1234))
-        scale = truth_cfg.get("scale", 1.0)
-        bias = truth_cfg.get("bias", 0.0)
-        latent_true = scale * \
-            jax.random.normal(key, (model.weight_size, 1)) + bias
-        state_true = model_true.weights_to_state(latent_true)
-        nnx.update(model_true, state_true)
+    model_cfg = data_cfg.get("outcome_model")
+    model_true, _ = _build_model(model_cfg)
 
     if kind == "synthetic":
         return create_synthetic_data(
@@ -165,6 +158,11 @@ def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
             key=jax.random.PRNGKey(data_cfg.get("seed", 0)),
             skews=data_cfg.get("skews"),
         )
+    if kind == "1d_regression":
+        return get_1d_regression(
+            model=model_true,
+        )
+
     raise ValueError(f"Unsupported data kind: {kind}")
 
 
@@ -186,7 +184,7 @@ def run_experiment_from_config(
 
     model, wrapped_model = _build_model(cfg["model"])
     latent_cov = _build_latent_cov(model, cfg["latent_cov"])
-    data = _build_data(model, cfg["data"], cfg.get("truth"))
+    data = _build_data(cfg["data"])
     training_cfg = cfg.get("training", {})
     training_kwargs = {
         "learning_rate": training_cfg.get("learning_rate", 0.01),
@@ -222,7 +220,8 @@ def run_experiment_from_config(
 
     run_cfg = cfg["run"]
     filter_type = cfg["experiment"].get("filter_type", ["ekf"])
-    filter_types = [filter_type] if isinstance(filter_type, str) else filter_type
+    filter_types = [filter_type] if isinstance(
+        filter_type, str) else filter_type
     filter_params = cfg["experiment"].get("filter_params", [{}])
     if isinstance(filter_params, dict):
         filter_params = [filter_params]
@@ -300,6 +299,6 @@ def experiment(
 
 if __name__ == "__main__":
     results = run_experiment_from_config(
-        config="experiment_4",
+        config="experiment_5",
     )
     print(results)
