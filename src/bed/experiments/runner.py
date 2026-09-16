@@ -1,4 +1,4 @@
-"""Sequential experiment runner."""
+"""Public entry point for sequential experiment runners."""
 
 from bed._experiments import Experiment
 

@@ -1,3 +1,5 @@
+"""Extended Kalman filtering and information criteria for design selection."""
+
 from .models import Model
 from scipy.stats import multivariate_normal
 import jax.numpy as jnp
@@ -230,8 +232,8 @@ class EKF:
             Monte Carlo estimation. The optimal EIG design is proportional to
             the eigenvector with largest eigenvalue of the prior covariance.
         """
-        state_prior_mean = self.ekf.state_prior[0]
-        state_prior_cov = self.ekf.state_prior[1]
+        state_prior_mean = self.state_prior[0]
+        state_prior_cov = self.state_prior[1]
         measurement_error = self.measurement_error
 
         H = self.model.jacobian(state_prior_mean.reshape(-1, 1), x)
@@ -241,6 +243,12 @@ class EKF:
         return jnp.atleast_1d(eig.squeeze())
 
     def calculate_epig(self, x, x_1):
+        """Compute linearized EPIG for candidate and prediction designs.
+
+        The posterior covariance reduction is evaluated with the Jacobians of
+        the current measurement model.  The result is averaged over the
+        prediction pool and returned in nats.
+        """
         state_prev = self.state_prior[0]
         j_1 = self.model.jacobian(state_prev.reshape(-1, 1), x_1)[None, ...]
         j_1_T = jnp.matrix_transpose(j_1)

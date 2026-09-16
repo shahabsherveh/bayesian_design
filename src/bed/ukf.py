@@ -49,6 +49,7 @@ class UKF:
         return jnp.asarray(state_prev).reshape(-1), state_cov_prev + state_innovation
 
     def _get_sigma_points(self, mean, covariance):
+        """Construct sigma points and their mean/covariance weights."""
         n = mean.size
         lam = self.alpha**2 * (n + self.kappa) - n
         scale = n + lam
@@ -66,20 +67,24 @@ class UKF:
 
     @property
     def state_prior(self):
+        """Return the current latent mean and covariance."""
         return self._state_prior
 
     @state_prior.setter
     def state_prior(self, value):
+        """Update the latent prior and regenerate sigma points."""
         mean, cov = value
         self.sigma_points = self._get_sigma_points(mean, cov)
         self._state_prior = mean, cov
 
     def _measurements(self, points, x):
+        """Evaluate the measurement model at every sigma point."""
         values = jax.vmap(lambda theta: self.model(
             theta.T, x), out_axes=1)(points)
         return values
 
     def _measurement_statistics(self, x):
+        """Compute transformed measurement moments and state cross-covariance."""
         if jnp.ndim(x) == 3:
             x = x[None, ...]
         sigma_points, sigma_weights_m, sigma_weights_c = self.sigma_points
@@ -87,6 +92,8 @@ class UKF:
         values = self._measurements(sigma_points, x)
         mean = jnp.sum(values * sigma_weights_m, axis=1)
         deviations = values - jnp.expand_dims(mean, axis=1)
+        # The transformed covariance includes observation noise independently
+        # of the uncertainty induced by the sigma-point state distribution.
         covariance = (
             jnp.sum(sigma_weights_c *
                     deviations * deviations, axis=1)
@@ -144,8 +151,10 @@ class UKF:
         obs_mean = jnp.sum(obs_values * weights_mean, axis=1)
         pred_dev = pred_values - jnp.expand_dims(pred_mean, axis=1)
         obs_dev = obs_values - jnp.expand_dims(obs_mean, axis=1)
-        cov_pred = jnp.sum(weights_cov * pred_dev * pred_dev, axis=1) + self.measurement_error
-        cov_obs = jnp.sum(weights_cov * obs_dev * obs_dev, axis=1) + self.measurement_error
+        cov_pred = jnp.sum(weights_cov * pred_dev * pred_dev,
+                           axis=1) + self.measurement_error
+        cov_obs = jnp.sum(weights_cov * obs_dev * obs_dev,
+                          axis=1) + self.measurement_error
         cross = jnp.sum(weights_cov * pred_dev * obs_dev, axis=1)
         return cov_pred - cross * cross / cov_obs
 
@@ -214,13 +223,15 @@ class UKF:
         S_x = jnp.einsum("k,bka,bkc->bac", weights_cov, dev_x, dev_x) + R
         S_1 = jnp.einsum("k,mka,mkc->mac", weights_cov, dev_1, dev_1) + R
         C = jnp.einsum("k,mka,bkc->bmac", weights_cov, dev_1, dev_x)
-        S_plus = S_1[None] - C @ jnp.linalg.inv(S_x)[:, None] @ jnp.matrix_transpose(C)
+        S_plus = S_1[None] - \
+            C @ jnp.linalg.inv(S_x)[:, None] @ jnp.matrix_transpose(C)
         logdet_1 = jnp.linalg.slogdet(S_1).logabsdet
         logdet_plus = jnp.linalg.slogdet(S_plus).logabsdet
         epig = 0.5 * (logdet_1[None, :] - logdet_plus)
         return epig.mean(axis=1)
 
     def calculate_eig(self, x, *args, **kwargs):
+        """Calculate parameter EIG from the UKF covariance reduction."""
         mean, S_x, P_x = self._measurement_statistics(x)
         _, state_cov = self.state_prior
         state_cov_post = state_cov - \

@@ -32,6 +32,7 @@ class Experiment:
         Raises:
             NotImplementedError: This is an abstract method that must be implemented
         """
+        """Return the measurement Jacobian with respect to latent state ``z``."""
         raise NotImplementedError("This method should be implemented by subclasses.")
 
     def simulate(self, params, design):

@@ -3,8 +3,6 @@ scipy
 statsmodels
 scikit-learn
 jupyter
-matplotlib
-seaborn
 pytest
 ipdb
 cvxpy

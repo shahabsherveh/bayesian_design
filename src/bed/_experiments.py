@@ -2,21 +2,13 @@ from copy import deepcopy
 from flax import nnx
 import jax
 import jax.numpy as jnp
-from matplotlib.lines import Line2D
-from matplotlib.patches import BoxStyle, Patch
-from matplotlib.ticker import FormatStrFormatter, FuncFormatter, MaxNLocator
-from mpl_toolkits.mplot3d.axes3d import mpatches
 import numpy as np
 from scipy.stats import gaussian_kde, multivariate_normal
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 from .ekf import EKF
 from .ukf import UKF
 from .models import LinearModel, Model, NeuralNetworkRegressor
 from .data import Data
-
-plt.rcParams.update({"font.size": 11})
 
 
 class Experiment:
@@ -53,7 +45,6 @@ class Experiment:
         data: Data,
         model: NeuralNetworkRegressor,
         warm_start: int = 10,
-        plot_inter_results=False,
         pre_train_model=False,
         training_kwargs={
             "epochs": 200,
@@ -90,20 +81,14 @@ class Experiment:
             model=model,
         )
         self.data = data
-        self.design_space, self.true_measurements = self.build_design_space(
+        self.design_pool, self.design_space, self.true_measurements = self.build_design_space(
             data)
         self.measurement_error = (
             # if not pre_train_model else model.mse * jnp.eye(1)
             measurement_error
         )
         self.latent_innovation = latent_innovation
-
-        self.plot_3D_inter_results = (
-            plot_inter_results if self.design_space.shape[-1] == 2 else False
-        )
-        self.plot_2D_inter_results = (
-            plot_inter_results if self.design_space.shape[-1] == 1 else False
-        )
+        self.warm_start = warm_start
 
     @staticmethod
     def build_prior(
@@ -144,10 +129,11 @@ class Experiment:
         Note:
             Uses fixed random seed (0) for reproducibility.
         """
-        design_space = jnp.concatenate([data.x_train, data.x_test], axis=0)
+        design_pool = data.x_test_pool
+        design_space = jnp.concatenate([data.x_train], axis=0)
         true_measurements = jnp.concatenate(
-            [data.y_train, data.y_test], axis=0)
-        return design_space, true_measurements
+            [data.y_train], axis=0)
+        return design_pool, design_space, true_measurements
 
     def calculate_epig(self, x, filtr, x_1=None, **kwargs):
         """
@@ -175,7 +161,7 @@ class Experiment:
             Monte Carlo sampling.
         """
         if x_1 is None:
-            x_1 = self.design_space
+            x_1 = self.design_pool
         result = filtr.calculate_epig(x, x_1)
         return result
 
@@ -211,6 +197,7 @@ class Experiment:
         epsilon_0 = mean_0 - y_0
 
         def get_normal_likelihood(epsilon):
+            """Evaluate the scalar Gaussian observation likelihood."""
             cov = self.measurement_error
             return (1 / jnp.sqrt(2 * jnp.pi * cov)) * jnp.exp(-0.5 * (epsilon**2) / cov)
 
@@ -306,6 +293,7 @@ class Experiment:
         return jnp.atleast_1d(eig.squeeze())
 
     def calculate_random(self, x, key, **kwargs):
+        """Return one uniformly distributed utility value per candidate."""
         val = nnx.vmap(
             lambda k: jax.random.uniform(
                 key=k,
@@ -358,6 +346,7 @@ class Experiment:
             shuffled_indices = jax.random.permutation(
                 jax.random.key(0), self.design_space.shape[0]
             )
+            # shuffled_indices = jnp.arange(self.design_space.shape[0])
             pool_values_shuffled = pool_values[shuffled_indices]
             best_index = shuffled_indices[jnp.argmax(pool_values_shuffled)]
             x = self.design_space[best_index]
@@ -405,15 +394,10 @@ class Experiment:
         criterion_label,
         filter_type,
         filter_params,
+        filter_instance,
         epochs,
         optimizer="grid_search",
         optimizer_params={"lr": 1, "max_iters": 50},
-        axes_2D=None,
-        figure_parameters={
-            "figsize": (190, 190),
-            "figsize_comparison": (13, 6),
-            "fontsize": 11,
-        },
     ):
         """
         Run sequential experimental design for multiple epochs.
@@ -446,17 +430,6 @@ class Experiment:
             Generates synthetic measurements using self.latent_true with
             Gaussian noise. Progress displayed via tqdm.
         """
-        filter_dict = {'ukf': UKF, 'ekf': EKF}
-        filter_instances = {}
-        for fname, fclass in filter_dict.items():
-            filter_instances[fname] = fclass(
-                model=self.model,
-                state_prev=self.state_init_prior[0],
-                state_cov_prev=self.state_init_prior[1],
-                state_innovation=self.latent_innovation,
-                measurement_error=self.measurement_error,
-                **filter_params
-            )
         criterion_dict = {
             "EPIG": self.calculate_epig,
             "EIG": self.calculate_eig,
@@ -467,50 +440,31 @@ class Experiment:
         )
         designs = []
         crit_values = []
-        rmse_values = []
-        rmse_values_predictions = []
-        figsize_mm = figure_parameters.get(
-            "figsize",
-        )
-        figsize_mm = (figsize_mm[0], figsize_mm[1])
-        figsize_inches = (figsize_mm[0] / 25.4, figsize_mm[1] / 25.4)
-        figsize_comparison_mm = figure_parameters.get(
-            "figsize_comparison",
-        )
-        figsize_comparison_inches = (
-            figsize_comparison_mm[0] / 25.4,
-            figsize_comparison_mm[1] / 25.4,
-        )
+        sd_values_test_pool = []
+        rmse_values_test_pool = []
+        sd_values_test_glob = []
+        rmse_values_test_glob = []
 
         progress_bar = tqdm(
             range(epochs), total=epochs, desc=f"Running {criterion_label} Experiment"
         )
-        if self.plot_3D_inter_results:
-            fig_3D, axes_3D = plt.subplots(
-                figsize=figsize_inches,
-                nrows=epochs,
-                ncols=3,
-                sharex=True,
-                sharey=True,
-            )
-            fig_3D.subplots_adjust(hspace=0.3, wspace=0.3)
-            axes_3D[0, 0].set_title("EPIG Surface")
-            axes_3D[0, 1].set_title("EPIG-MC Surface")
-            axes_3D[0, 2].set_title("EIG Surface")
-            for i in range(3):
-                axes_3D[-1, i].set_xlabel("x1")
-            for i in range(epochs):
-                axes_3D[i, 0].set_ylabel("x2")
+        filtr = filter_instance
 
         for i in progress_bar:
-            rmse = self.calculate_rmse(filtr)
             estimate_mean, estimate_cov = filtr.state_prior
-            predictions = self.model(
-                estimate_mean.reshape(-1, 1), self.data.x_val
-            ).squeeze()
-            rmse_predictions = self.calculate_rmse_predictions(
-                predictions, self.data.y_val.squeeze()
+            mean_test_pool, cov_test_pool = filtr.measurement_prior(
+                self.data.x_test_pool)
+            mean_test_glob, cov_test_glob = filtr.measurement_prior(
+                self.data.x_test_glob)
+            rmse_predictions_pool = self.calculate_rmse_predictions(
+                mean_test_pool, self.data.y_test_pool.squeeze()
             )
+            rmse_predictions_glob = self.calculate_rmse_predictions(
+                mean_test_glob, self.data.y_test_glob.squeeze()
+            )
+            sd_pool = self.calculate_rmse(cov_test_pool)
+            sd_glob = self.calculate_rmse(cov_test_glob)
+
             best_index, x_opt, crit_value = self.optimize(
                 criterion_func=criterion_func,
                 filtr=filtr,
@@ -518,70 +472,30 @@ class Experiment:
                 params=optimizer_params,
             )
             measurement = self.data.observe(best_index)
-            # + np.random.normal(
-            # 0, np.sqrt(self.measurement_error)
-            # )
-            if self.plot_3D_inter_results:
-                self.plot_crit_surface(
-                    title=f"{criterion_label} optimization",
-                    new_design=x_opt,
-                    previous_designs=jnp.array(designs) if designs else None,
-                    axes=axes_3D[i],
-                )
-            if self.plot_2D_inter_results:
-                if i % (epochs // 5) == 0:
-                    ax = axes_2D[i // (epochs // 5)]
-                    crit_ax = self.plot_crit(
-                        ax=ax,
-                        crit_fn=criterion_func,
-                        new_design=x_opt,
-                        previous_designs=jnp.array(
-                            designs) if designs else None,
-                    )
-                    crit_ax.set_ylabel(f"{criterion_label}")
-                    props = dict(boxstyle="round",
-                                 facecolor="wheat", alpha=0.2)
-                    # ax.set_title(f"Iteration {i + 1}")
-                    # iteration_patch = Patch(
-                    #     facecolor="none", label=f"Iter {i + 1}", alpha=0.5
-                    # )
-
-                    # handles, labels = axes_2D[i].get_legend_handles_labels()
-                    # handles.append(observed_patch)
-                    ax.text(
-                        0.1,
-                        0.9,
-                        f"Iter {i}",
-                        transform=ax.transAxes,
-                        color="black",
-                        verticalalignment="top",
-                        bbox=props,
-                    )
-                    # ax.legend(
-                    #     handles=[iteration_patch],
-                    #     loc="upper left",
-                    #     draggable=True,
-                    # )
-
-            filtr.state_prior = filtr.get_state_posterior(
+            posterior_mean, posterior_cov = filtr.get_state_posterior(
                 measurement, x_opt[None, ...])
-            # latent_estimates = multivariate_normal(
-            #     mean=ekf.state_prior[0].flatten(), cov=ekf.state_prior[1]
-            # ).rvs(size=1000)
+
+            filtr.state_prior = posterior_mean, posterior_cov
             progress_bar.set_postfix(
                 {
-                    "Prediction RMSE": rmse,
-                    "Frequentist RMSE": rmse_predictions,
-                    f"{criterion_label}": crit_value,
+                    "Global SD": sd_glob.round(2),
+                    "Pool SD": sd_pool.round(2),
+                    "Global RMSE": rmse_predictions_glob.round(2),
+                    "Pool RMSE": rmse_predictions_pool.round(2),
+                    f"{criterion_label}": crit_value.round(3),
                 }
             )
             designs.append(x_opt)
             crit_values.append(crit_value)
-            rmse_values.append(rmse)
-            rmse_values_predictions.append(rmse_predictions)
+            rmse_values_test_glob.append(rmse_predictions_glob)
+            rmse_values_test_pool.append(rmse_predictions_pool)
+            sd_values_test_glob.append(sd_glob)
+            sd_values_test_pool.append(sd_pool)
         return ExperimentResults(
-            rmse_values,
-            rmse_values_predictions,
+            sd_values_test_glob,
+            sd_values_test_pool,
+            rmse_values_test_glob,
+            rmse_values_test_pool,
             jnp.array(designs),
             crit_values,
             design_space=self.design_space,
@@ -589,19 +503,17 @@ class Experiment:
             filter_type=filter_type
         )
 
-    def calculate_rmse(self, filtr):
+    def calculate_rmse(self, cov):
         """
         Calculate root mean squared error for predictions.
 
         Args:
-            predictions: Predicted measurement values
-            true_measurements: True measurement values
+            cov: Predictive covariance matrix or batch of covariance matrices.
 
         Returns:
             Average RMSE across all prediction locations (scalar)
         """
-        mean, cov = filtr.measurement_prior(self.design_space)
-        rmse_pred = (cov**.5).mean()
+        rmse_pred = (jnp.linalg.trace(cov)**.5).mean()
         return rmse_pred
 
     def calculate_rmse_params(self, estimate_mean, latent_true):
@@ -663,310 +575,47 @@ class Experiment:
             independent EKF state evolution.
         """
         results = []
-        instances = [deepcopy(self) for _ in criteria]
-        if self.plot_2D_inter_results:
-            fig, axes = plt.subplots(
-                6, len(criteria), figsize=(165 / 25.4, 165 / 25.4), sharex=True
-            )
-            fig.subplots_adjust(hspace=0.3, wspace=0.536, right=0.85)
-            for i, criterion in enumerate(criteria):
-                axes[0, i].set_title(f"{criterion} Strategy")
-                axes[-1, i].set_xlabel("Design (x)")
-            for i in range(6):
-                axes[i, 0].set_ylabel("y")
-
         for i, filter_type in enumerate(filter_types):
             filter_kwargs = filter_params[i]
+            filter_dict = {'ukf': UKF, 'ekf': EKF}
+            fclass = filter_dict[filter_type]
+            filter_instance = fclass(
+                model=self.model,
+                state_prev=self.state_init_prior[0],
+                state_cov_prev=self.state_init_prior[1],
+                state_innovation=self.latent_innovation,
+                measurement_error=self.measurement_error,
+                **filter_params[i]
+            )
+            r = self.run(
+                criterion_label="RANDOM",
+                filter_type=filter_type,
+                filter_params=filter_kwargs,
+                filter_instance=filter_instance,
+                epochs=self.warm_start,
+                optimizer=optimizer_method,
+                optimizer_params=optimizer_params,
+            )
             for j, criterion in enumerate(criteria):
-                self_copy = instances[j]
+                # Each criterion must start from the same warm-start posterior;
+                # otherwise later strategies would inherit earlier observations.
+                filter_instance_copy = deepcopy(filter_instance)
                 try:
-                    r = self_copy.run(
+                    r = self.run(
                         criterion_label=criterion,
                         filter_type=filter_type,
                         filter_params=filter_kwargs,
+                        filter_instance=filter_instance_copy,
                         epochs=iterations,
                         optimizer=optimizer_method,
                         optimizer_params=optimizer_params,
-                        axes_2D=axes[:, j]
-                        if self.plot_2D_inter_results and len(criterion) > 1
-                        else None,
                     )
                     results.append(r)
                 except Exception as e:
                     raise (e)
                     print(e)
 
-        breakpoint()
         return MultiExperimentResults(results)
-
-    def plot_crit(
-        self,
-        ax: plt.Axes,
-        crit_fn,
-        title="EKF Sequential Design",
-        grid_size=40,
-        new_design=None,
-        previous_designs=None,
-    ):
-        pool_min = self.design_space[..., 0].min()
-        pool_max = self.design_space[..., 0].max()
-        distance = pool_max - pool_min
-        x_range = jnp.linspace(
-            pool_min,  # - 0.2 * distance,
-            pool_max,
-        )
-        x_train = self.data.x_train
-        predictions_train = self.model(
-            self.ekf.state_prior[0].reshape(-1, 1), x_train
-        ).squeeze()
-        sorted_desin_space = jnp.sort(self.design_space.squeeze())
-        predictions_pool, prediction_variance_pool = self.ekf.measurement_prior(
-            sorted_desin_space[:, None, None, None]
-        )
-        predictions_pool = predictions_pool.squeeze()
-        predicion_validate, _ = self.ekf.measurement_prior(self.data.x_val)
-        prediction_sigma_pool = jnp.sqrt(prediction_variance_pool.squeeze())
-        measurements = self.data.observe(x_range, has_noise=False).squeeze()
-        predictions, prediction_variance = self.ekf.measurement_prior(
-            x_range[:, None, None, None]
-        )
-        predictions = predictions.squeeze()
-        prediction_sigma = jnp.sqrt(prediction_variance.squeeze())
-        ax.plot(
-            x_range,
-            measurements,
-            label="True Measurements",
-            color="black",
-        )
-        ax.scatter(
-            sorted_desin_space.squeeze(),
-            predictions_pool,
-            # label="Design Pool Prdictions",
-            marker="o",
-            color="black",
-            alpha=0.2,
-            # s=50,
-        )
-        # ax.scatter(
-        #     self.data.x_val.squeeze(), predicion_validate.squeeze(), color="orange"
-        # )
-        # ax.scatter(
-        #     x_train.squeeze(),
-        #     predictions_train,
-        #     label="Training Designs",
-        #     color="orange",
-        #     marker="o",
-        #     s=75,
-        # )
-        ax.plot(
-            x_range,
-            predictions,
-            color="black",
-            linestyle="--",
-            label="Predictions",
-        )
-
-        # ax.fill_between(
-        #     x_range,
-        #     (predictions - 1 * prediction_sigma).squeeze(),
-        #     (predictions + 1 * prediction_sigma).squeeze(),
-        #     color="tab:gray",
-        #     alpha=0.2,
-        #     label="90% Confidence Interval",
-        # )
-        if previous_designs is not None:
-            previous_measurements = self.data.observe(previous_designs)
-            ax.scatter(
-                previous_designs[..., 0].squeeze(),
-                previous_measurements.squeeze(),
-                color="tab:brown",
-                marker="o",
-                label="Observed Designs",
-                alpha=0.7,
-                # s=100,
-            )
-
-        if new_design is not None:
-            new_measurements = self.data.observe(new_design)
-            ax.scatter(
-                new_design[..., 0].squeeze(),
-                new_measurements.squeeze(),
-                color="tab:red",
-                marker="X",
-                label="Optimal Design",
-                s=75,
-            )
-            ax.vlines(
-                new_design[..., 0].squeeze(),
-                ymin=ax.get_ylim()[0],
-                ymax=new_measurements.squeeze(),
-                color="tab:red",
-                linestyle="--",
-            )
-        ax_criterion = ax.twinx()
-        crit_values = crit_fn(x_range[:, None, None, None]).squeeze()
-        crit_values_normalized = (crit_values - crit_values.min()) / (
-            crit_values.max() - crit_values.min() + 1e-8
-        )
-        ax_criterion.plot(
-            x_range,
-            crit_values,
-            color="tab:blue" if crit_fn == self.calculate_epig else "tab:orange",
-        )
-        # fmt_small = FormatStrFormatter("%0e")
-        fmt = FuncFormatter(
-            lambda x, _: f"{x:.0e}" if abs(x) < 1e-2 else f"{x:.2f}")
-        ax_criterion.yaxis.set_major_formatter(fmt)
-        return ax_criterion
-
-    def plot_crit_surface(
-        self,
-        title="EPIG, EIG and EPIG-MC Surfaces",
-        x_range=None,
-        y_range=None,
-        grid_size=20,
-        new_design=None,
-        previous_designs=None,
-        axes=None,
-        fig_size=(22, 13),
-    ):
-        """
-        Visualize EPIG and EIG criterion surfaces over 2D design space.
-
-        Creates side-by-side contour plots showing how EPIG and EIG values
-        vary across the design space. Marks the design pool, previously
-        selected designs, and newly optimized design.
-
-        Args:
-            title: Overall figure title
-            x_range: Tuple (min, max) for first design dimension.
-                If None, auto-computed from design_space.
-            y_range: Tuple (min, max) for second design dimension.
-                If None, auto-computed from design_space.
-            grid_size: Number of grid points per dimension for contour plot
-            new_design: Newly optimized design to mark with red 'X'
-            previous_designs: Array of previously selected designs to mark with blue 'o'
-
-        Note:
-            Assumes 2D design space for visualization. Computes criterion values
-            at all grid points, which can be slow for fine grids.
-        """
-        x_range = (
-            (self.design_space[:, 0].min() - 1,
-             self.design_space[:, 0].max() + 1)
-            if x_range is None
-            else x_range
-        )
-        y_range = (
-            (self.design_space[:, 1].min() - 1,
-             self.design_space[:, 1].max() + 1)
-            if y_range is None
-            else y_range
-        )
-
-        x1 = jnp.linspace(x_range[0], x_range[1], grid_size)
-        x2 = jnp.linspace(y_range[0], y_range[1], grid_size)
-        xx1, xx2 = jnp.meshgrid(x1, x2)
-        grid_points = jnp.concatenate(
-            [xx1.flatten()[:, None, None, None], xx2.flatten()[:, None, None, None]],
-            axis=-1,
-        )
-        figsize_cm = fig_size
-        figsize_inches = (figsize_cm[0], figsize_cm[1])
-        if axes is None:
-            fig, axes = plt.subplots(1, 2, sharey=True, figsize=figsize_inches)
-        crit_values_epig = self.calculate_epig(grid_points).reshape(xx1.shape)
-        crit_values_eig = self.calculate_eig(grid_points).reshape(xx1.shape)
-        crit_values_mc = self.calculate_epig_mc(grid_points).reshape(xx1.shape)
-        fmt = FormatStrFormatter("%.2f")
-        c = axes[0].contourf(xx1, xx2, crit_values_epig,
-                             levels=50, cmap="Blues")
-        axes[0].scatter(
-            self.design_space[..., 0].squeeze(),
-            self.design_space[..., 1].squeeze(),
-            c="black",
-            alpha=0.2,
-            label="Design Pool",
-        )
-        cbar = plt.colorbar(c, ax=axes[0], format=fmt)
-        cbar.locator = MaxNLocator(nbins=3)
-        cbar.update_ticks()
-        c = axes[2].contourf(xx1, xx2, crit_values_eig,
-                             levels=50, cmap="Oranges")
-        cbar = plt.colorbar(c, ax=axes[2], format=fmt)
-        cbar.locator = MaxNLocator(nbins=3)
-        cbar.update_ticks()
-        axes[2].scatter(
-            self.design_space[..., 0].squeeze(),
-            self.design_space[..., 1].squeeze(),
-            c="black",
-            label="Design Pool",
-            marker="o",
-            alpha=0.2,
-        )
-        c = axes[1].contourf(xx1, xx2, crit_values_mc,
-                             levels=50, cmap="Greens")
-        cbar = plt.colorbar(c, ax=axes[1], format=fmt)
-        cbar.locator = MaxNLocator(nbins=3)
-        cbar.update_ticks()
-        axes[1].scatter(
-            self.design_space[..., 0].squeeze(),
-            self.design_space[..., 1].squeeze(),
-            c="black",
-            label="Design Pool",
-            marker="o",
-            alpha=0.2,
-        )
-
-        if previous_designs is not None:
-            axes[0].scatter(
-                previous_designs[..., 0].squeeze(),
-                previous_designs[..., 1].squeeze(),
-                c="tab:brown",
-                label="Added Designs",
-                marker="o",
-                # s=100,
-                alpha=0.7,
-            )
-            axes[1].scatter(
-                previous_designs[..., 0].squeeze(),
-                previous_designs[..., 1].squeeze(),
-                c="tab:brown",
-                marker="o",
-                # s=100,
-                alpha=0.7,
-            )
-            axes[2].scatter(
-                previous_designs[..., 0].squeeze(),
-                previous_designs[..., 1].squeeze(),
-                c="tab:brown",
-                marker="o",
-                # s=100,
-                alpha=0.7,
-            )
-        if new_design is not None:
-            axes[0].scatter(
-                new_design[..., 0].squeeze(),
-                new_design[..., 1].squeeze(),
-                c="tab:red",
-                label="New Design",
-                marker="X",
-                s=70,
-            )
-            axes[1].scatter(
-                new_design[..., 0].squeeze(),
-                new_design[..., 1].squeeze(),
-                c="tab:red",
-                marker="X",
-                s=70,
-            )
-            axes[2].scatter(
-                new_design[..., 0].squeeze(),
-                new_design[..., 1].squeeze(),
-                c="tab:red",
-                marker="X",
-                s=70,
-            )
 
 
 class ExperimentResults:
@@ -987,16 +636,17 @@ class ExperimentResults:
 
     def __init__(
         self,
-        rmse_values,
-        rmse_values_predictions,
+        sd_glob,
+        sd_pool,
+        rmse_global,
+        rmse_pool,
         designs,
         crit_values,
         crit_label="EPIG",
         filter_type="ekf",
         design_space=None,
     ):
-        """
-        Initialize experiment results.
+        """Initialize metric histories and selected designs.
 
         Args:
             rmse_params_values: Parameter RMSE values over epochs
@@ -1006,41 +656,15 @@ class ExperimentResults:
             grad_lists: Gradients from each optimization run
             crit_label: Label for the criterion used
         """
-        self.rmse_values = rmse_values
-        self.rmse_values_predictions = rmse_values_predictions
+        self.sd_glob = sd_glob
+        self.sd_pool = sd_pool
+        self.rmse_glob = rmse_global
+        self.rmse_pool = rmse_pool
         self.designs = designs
         self.crit_values = crit_values
         self.crit_label = crit_label
         self.filter_type = filter_type
         self.design_space = design_space
-
-    def plot_results(self):
-        """
-        Plot experiment results showing criterion and RMSE evolution.
-
-        Creates a 3-panel figure showing:
-        - Top: Criterion values over iterations
-        - Bottom left: Parameter estimation RMSE over iterations
-        - Bottom right: Prediction RMSE over iterations
-
-        Useful for assessing convergence and comparing design strategies.
-        """
-        fig = plt.figure(figsize=(13, 6))
-        gs = GridSpec(2, 2, figure=fig)
-        ax_crit = fig.add_subplot(gs[0, :])
-        ax_crit.plot(self.crit_values, marker="o")
-        ax_crit.set_title(
-            f"{self.crit_label} Values over Iterations ")
-        ax_crit.set_xlabel("Iteration")
-        ax_crit.set_ylabel(self.crit_label)
-
-        ax_rmse = fig.add_subplot(gs[1, :])
-        ax_rmse.plot(self.rmse_values, marker="o")
-        ax_rmse.set_title("Prediction RMSE over Iterations")
-        ax_rmse.set_xlabel("Iteration")
-        ax_rmse.set_ylabel("RMSE")
-
-        fig.suptitle(f"{self.crit_label} optimization by {self.filter_type}")
 
 
 class MultiExperimentResults:
@@ -1062,77 +686,3 @@ class MultiExperimentResults:
             experiment_results_list: List of ExperimentResults objects to compare
         """
         self.experiment_results_list = experiment_results_list
-
-    def plot_comparison(self, width_mm=120, height_mm=90):
-        """
-        Plot prediction RMSE comparison across all experiments.
-
-        Creates a single plot with overlaid curves showing how prediction
-        RMSE evolves over iterations for each design strategy. Useful for
-        visually comparing which criterion leads to faster learning.
-
-        visually comparing which criterion leads to faster learning.
-
-        Note:
-            Each curve is labeled with its criterion name (from crit_label).
-        """
-        fig, axes = plt.subplots(
-            3, 1, figsize=(height_mm / 25.4, width_mm / 25.4), sharex=True
-        )
-        plt.rcParams.update({"font.size": 11})
-        fig.subplots_adjust(hspace=0.5)
-        crit_values = jnp.array(
-            [result.crit_values for result in self.experiment_results_list]
-        )
-        crit_values_normalized = (
-            crit_values - crit_values.min(axis=1, keepdims=True)
-        ) / (
-            crit_values.max(axis=1, keepdims=True)
-            - crit_values.min(axis=1, keepdims=True)
-        )
-        for i, result in enumerate(self.experiment_results_list):
-            axes[0].plot(result.rmse_values, label=result.crit_label)
-            axes[1].plot(result.rmse_values_predictions,
-                         label=result.crit_label)
-            if result.crit_label.upper() == "RAND":
-                break
-            axes[2].plot(crit_values_normalized[i], label=result.crit_label)
-
-        axes[0].set_title("Estimated Predictive Standard Error")
-        # axes[0].set_ylabel("")
-        # axes[0].legend()
-        axes[1].set_title("Root Mean Squared Error")
-
-        axes[2].set_title("Normalized Utility Values")
-        axes[2].set_xlabel("Iteration")
-
-    def plot_design_distribution(self, width_mm=80, height_mm=160):
-        fig, ax = plt.subplots(
-            figsize=(height_mm / 25.4, width_mm / 25.4),
-        )
-        x_range = jnp.linspace(
-            self.experiment_results_list[0].design_space.min(),
-            self.experiment_results_list[0].design_space.max(),
-            100,
-        )
-        design_space_kde = gaussian_kde(
-            self.experiment_results_list[0].design_space.squeeze()
-        )
-        # ax.set_title("Optimal Designs Distribution")
-        ax.plot(
-            x_range,
-            design_space_kde(x_range),
-            color="black",
-            label="Design Pool",
-        )
-
-        for i, result in enumerate(self.experiment_results_list):
-            kde = gaussian_kde(result.designs.squeeze())
-            ax.plot(
-                x_range,
-                kde(x_range),
-                label=f"{result.crit_label} Designs",
-            )
-
-        ax.set_xlabel("Design Value")
-        # ax.legend()

@@ -16,18 +16,17 @@ test_size = 0.2
 
 [latent_cov]
 type = "he_diagonal"
-scale = 1
+scale = 2
 
 [measurement_error]
-variance = 0.05
+variance = 0.1
 dim = 1
 
 [experiment]
-filter_type = ["ukf","ekf"]
-filter_params=[{},{}]
-latent_innovation = 0.01
-plot_inter_results = false
-pre_train_model = true
+filter_type = ["ukf"]
+filter_params=[{}]
+latent_innovation = 1
+pre_train_model = false
 
 [training]
 learning_rate = 0.05
@@ -35,6 +34,7 @@ epochs = 200
 seed = 0
 
 [run]
-strategies = ["EPIG", "EIG","RANDOM"]
-iterations = 50
+strategies = ["EPIG"]
+iterations = 190
 optimizer_method = "brute_force"
+warm_start = 10

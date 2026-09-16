@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 import typer
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 from bed.data import get_uci_data
 
@@ -13,6 +13,7 @@ CONFIG_DIR = Path(__file__).resolve().parents[3] / "experiments" / "configs"
 
 
 def _load_config(config: str) -> dict:
+    """Load a named bundled TOML config or an explicit config path."""
     import tomllib
     config_path = Path(config)
     if not config_path.exists():
@@ -29,6 +30,7 @@ def _load_config(config: str) -> dict:
 
 
 def _build_model(model_cfg: dict):
+    """Construct the configured NNX model and measurement wrapper."""
     import jax
     import jax.numpy as jnp
     from flax import nnx
@@ -55,6 +57,7 @@ def _build_model(model_cfg: dict):
 
 
 def _build_latent_cov(model, latent_cfg: dict):
+    """Construct the latent covariance matrix requested by configuration."""
     import jax.numpy as jnp
     cov_type = latent_cfg["type"]
     if cov_type == "scaled_identity":
@@ -75,6 +78,7 @@ def _build_latent_cov(model, latent_cfg: dict):
 
 
 def _build_data(model, data_cfg: dict, truth_cfg: dict | None):
+    """Construct a configured dataset and optional synthetic ground truth."""
     import jax
     import jax.numpy as jnp
     from flax import nnx
@@ -164,6 +168,7 @@ def run_experiment_from_config(
     show_plot: bool = True,
     dry_run: bool = False,
 ):
+    """Run one configured experiment, or return a dry-run summary."""
     import jax
     from jax import numpy as jnp
     from flax import nnx
@@ -185,7 +190,7 @@ def run_experiment_from_config(
     measurement_cfg = cfg["measurement_error"]
     measurement_error = measurement_cfg["variance"] * \
         jnp.eye(measurement_cfg["dim"])
-
+    warm_start = cfg["run"].get('warm_start', 10)
     if dry_run:
         return {
             "config": cfg["_path"],
@@ -194,6 +199,7 @@ def run_experiment_from_config(
             "design_pool_size": int(data.x_train.shape[0] + data.x_test.shape[0]),
             "strategies": strategies or cfg["run"]["strategies"],
             "iterations": iterations or cfg["run"]["iterations"],
+            "warm_start": warm_start
         }
 
     experiment = Experiment(
@@ -202,9 +208,7 @@ def run_experiment_from_config(
         latent_cov=latent_cov,
         latent_innovation=cfg["experiment"].get("latent_innovation", 0),
         measurement_error=measurement_error,
-        plot_inter_results=(
-            cfg["experiment"].get("plot_inter_results", False) and show_plot
-        ),
+        warm_start=warm_start,
         pre_train_model=cfg["experiment"].get("pre_train_model", False),
         training_kwargs=training_kwargs,
     )
@@ -219,17 +223,15 @@ def run_experiment_from_config(
         filter_types=cfg["experiment"].get("filter_type", ["ekf"]),
         filter_params=cfg["experiment"].get("filter_params", {})
     )
-    if show_plot:
-        results.plot_comparison()
-        plt.show()
+    # if show_plot:
+    #     results.plot_comparison()
+    #     plt.show()
     return results
 
 
 @app.callback()
 def callback():
-    """
-    Awesome Portal Gun
-    """
+    """Print the CLI welcome message before executing a command."""
     print("Welcome to the Bayesian Experimental Design CLI!")
 
 
@@ -260,13 +262,11 @@ def experiment(
         "--strategies",
         help="Comma-separated strategy list (e.g. EPIG,EIG,EPIG-MC,RAND).",
     ),
-    no_plot: bool = typer.Option(
-        False, "--no-plot", help="Skip plotting and interactive windows."
-    ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Validate config and print execution summary."
     ),
 ):
+    """Run an experiment from a TOML configuration file."""
     strategy_list = (
         [s.strip() for s in strategies.split(",") if s.strip()]
         if strategies is not None
@@ -287,3 +287,4 @@ if __name__ == "__main__":
     results = run_experiment_from_config(
         config="experiment_4",
     )
+    print(results)

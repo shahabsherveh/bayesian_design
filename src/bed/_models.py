@@ -14,10 +14,9 @@ from functools import partial
 
 import cvxpy as cp
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import optax
-import seaborn as sns
 from flax import nnx
 from scipy.stats import multivariate_normal
 from tqdm import tqdm
@@ -84,8 +83,10 @@ class LinearGaussianModel:
             Array of shape (m, k) where m is number of valid allocations and k is
             number of design points. Each row sums to n.
         """
-        search_space_all = np.array(np.meshgrid(*[np.arange(n)] * n)).T.reshape(-1, n)
-        search_space_filtered = search_space_all[search_space_all.sum(axis=1) == n]
+        search_space_all = np.array(np.meshgrid(
+            *[np.arange(n)] * n)).T.reshape(-1, n)
+        search_space_filtered = search_space_all[search_space_all.sum(
+            axis=1) == n]
         return search_space_filtered
 
     @staticmethod
@@ -102,7 +103,8 @@ class LinearGaussianModel:
             Array of shape (nx*ny, 2) containing all grid points
         """
         xx, yy = np.meshgrid(
-            np.linspace(-1, 1, design_dim[0]), np.linspace(-1, 1, design_dim[1])
+            np.linspace(-1, 1, design_dim[0]
+                        ), np.linspace(-1, 1, design_dim[1])
         )
         return np.column_stack([xx.flatten(), yy.flatten()])
 
@@ -198,11 +200,13 @@ class LinearGaussianModel:
             CVXPy Problem object that can be solved with problem.solve()
         """
         # Decision variable: allocation weights (must be non-negative)
-        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
+        eta = cp.Variable(len(self.observable_designs),
+                          nonneg=True, name="eta")
 
         # Construct moment matrix as weighted sum of information matrices
         moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))]
+            [eta[i] * self.info_matrices[i]
+                for i in range(len(self.info_matrices))]
         )
 
         # D-optimal criterion: minimize -log(det(R + M))
@@ -229,11 +233,13 @@ class LinearGaussianModel:
             Solved CVXPy Problem object with optimal allocation in problem.var_dict["eta"]
         """
         # Decision variable: allocation weights (must be non-negative)
-        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
+        eta = cp.Variable(len(self.observable_designs),
+                          nonneg=True, name="eta")
 
         # Construct moment matrix as weighted sum of information matrices
         moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))]
+            [eta[i] * self.info_matrices[i]
+                for i in range(len(self.info_matrices))]
         )
 
         # A-optimal criterion: minimize trace((R + M)^{-1})
@@ -363,6 +369,15 @@ class GP:
             observable_designs: list[int] | None = None,
             R=np.eye(2),
     ):
+        """Initialize a kernel-based design model.
+
+        Args:
+            kernel: Callable covariance kernel.
+            theta: Parameters used by :meth:`generate_outcomes`.
+            X: Candidate design matrix.
+            observable_designs: Optional indices selecting allowed designs.
+            R: Prior precision matrix used by the optimality criteria.
+        """
         self.kernel = kernel
         self.theta = theta
         self.X = X
@@ -385,8 +400,10 @@ class GP:
             Array of shape (m, k) where m is number of valid allocations and k is
             number of design points. Each row sums to n.
         """
-        search_space_all = np.array(np.meshgrid(*[np.arange(n)] * n)).T.reshape(-1, n)
-        search_space_filtered = search_space_all[search_space_all.sum(axis=1) == n]
+        search_space_all = np.array(np.meshgrid(
+            *[np.arange(n)] * n)).T.reshape(-1, n)
+        search_space_filtered = search_space_all[search_space_all.sum(
+            axis=1) == n]
         return search_space_filtered
 
     @staticmethod
@@ -403,7 +420,8 @@ class GP:
             Array of shape (nx*ny, 2) containing all grid points
         """
         xx, yy = np.meshgrid(
-            np.linspace(-1, 1, design_dim[0]), np.linspace(-1, 1, design_dim[1])
+            np.linspace(-1, 1, design_dim[0]
+                        ), np.linspace(-1, 1, design_dim[1])
         )
         return np.column_stack([xx.flatten(), yy.flatten()])
 
@@ -512,9 +530,11 @@ class GP:
             The problem is solved immediately upon calling this method. Access
             optimal allocations via self.d_opt_problem.var_dict["eta"].value.
         """
-        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
+        eta = cp.Variable(len(self.observable_designs),
+                          nonneg=True, name="eta")
         moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))]
+            [eta[i] * self.info_matrices[i]
+                for i in range(len(self.info_matrices))]
         )
         criterion = -cp.log_det(self.R + moment_matrix)
 
@@ -543,9 +563,11 @@ class GP:
             The problem is solved immediately upon calling this method. Access
             optimal allocations via self.a_opt_problem.var_dict["eta"].value.
         """
-        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
+        eta = cp.Variable(len(self.observable_designs),
+                          nonneg=True, name="eta")
         moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))]
+            [eta[i] * self.info_matrices[i]
+                for i in range(len(self.info_matrices))]
         )
         criterion = cp.tr_inv(self.R + moment_matrix)
 
@@ -813,7 +835,8 @@ class GaussianProcessModel:
             observed_idx: Optional indices of observed points to mark
         """
         fig, ax = plt.subplots()
-        xx1, xx2 = np.meshgrid(np.unique(self.X[:, 0]), np.unique(self.X[:, 1]))
+        xx1, xx2 = np.meshgrid(
+            np.unique(self.X[:, 0]), np.unique(self.X[:, 1]))
         pred_idx = (
             np.setdiff1d(np.arange(len(self.X)), observed_idx)
             if observed_idx is not None
@@ -844,7 +867,9 @@ class Model:
     """
 
     def jacobian(self, z, x):
-        raise NotImplementedError("Subclasses must implement the jacobian method.")
+        """Return the Jacobian of the measurement with respect to ``z``."""
+        raise NotImplementedError(
+            "Subclasses must implement the jacobian method.")
 
     def train(self, x_train, y_train, **kwargs):
         """
@@ -874,7 +899,8 @@ class Model:
             This is a placeholder. Subclasses must override this method.
         """
 
-        raise NotImplementedError("Subclasses must implement the __call__ method.")
+        raise NotImplementedError(
+            "Subclasses must implement the __call__ method.")
 
 
 class LinearModel(Model):
@@ -900,13 +926,18 @@ class LinearModel(Model):
 
 
 class FlaxModel(nnx.Module):
+    """Base class for NNX models with flattened latent parameters."""
+
     def __call__(self, x, rngs: nnx.Rngs | None = None):
+        """Evaluate the network at a batch of designs."""
         raise NotImplementedError
 
     def _validate_parameters(self, z):
+        """Validate the shape of a flattened parameter vector."""
         raise NotImplementedError
 
     def _validate_input(self, x):
+        """Validate the shape of a model input."""
         raise NotImplementedError
 
     def _create_weight_mapping(self):
@@ -930,6 +961,7 @@ class FlaxModel(nnx.Module):
         return mapping, idx
 
     def weights_to_state(self, z):
+        """Convert a flat latent vector into an NNX parameter state."""
         self._validate_parameters(z)
         flat = []
         for path, meta in self.weight_mapping.items():
@@ -940,6 +972,7 @@ class FlaxModel(nnx.Module):
         return nnx.from_flat_state(flat)
 
     def state_to_weights(self, state: nnx.State):
+        """Flatten an NNX parameter state using the model's stable layout."""
         weights = jnp.zeros((self.weight_size, 1))
         flat = dict(nnx.to_flat_state(state))
         for path, meta in self.weight_mapping.items():
@@ -948,22 +981,27 @@ class FlaxModel(nnx.Module):
         return weights
 
     def _validate_parameters(self, z):
+        """Ensure that ``z`` contains one value for every model parameter."""
         assert z.shape[0] == (self.weight_size), (
             "Parameter vector z has incorrect size."
         )
 
     def loss(self, x, y, rngs: nnx.Rngs):
+        """Compute the task-specific training loss."""
         raise NotImplementedError("Subclasses must implement the loss method.")
 
 
 class DenseNN(FlaxModel):
+    """Fully connected network with GELU hidden activations."""
+
     def __init__(
             self, input_dim, hidden_dims, output_dim, rngs: nnx.Rngs
     ):
+        """Create a dense network and record its flattened parameter layout."""
         nodes = [input_dim] + hidden_dims + [output_dim]
         self.layers = nnx.List()
         for i in range(len(nodes)-1):
-            self.layers.append(nnx.Linear(nodes[i], nodes[i + 1],rngs=rngs, kernel_init=nnx.nn.initializers.variance_scaling(
+            self.layers.append(nnx.Linear(nodes[i], nodes[i + 1], rngs=rngs, kernel_init=nnx.nn.initializers.variance_scaling(
                 scale=2.0, mode="fan_in", distribution="truncated_normal")))
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
@@ -971,6 +1009,7 @@ class DenseNN(FlaxModel):
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
+        """Apply hidden GELU layers followed by a linear output layer."""
         output = x
         for l in self.layers[:-1]:
             output = nnx.gelu(l(
@@ -980,49 +1019,64 @@ class DenseNN(FlaxModel):
         return output
 
     def _validate_input(self, x):
+        """Check that the leading input dimension matches ``input_dim``."""
         assert x.shape[0] == self.input_dim, "Input x has incorrect dimensionality."
 
 
 class LinearNN(FlaxModel):
+    """Single linear layer used as a differentiable baseline."""
+
     def __init__(self, input_dim, rngs: nnx.Rngs):
+        """Create a one-output linear network."""
         self.output = nnx.Linear(input_dim, 1, rngs=rngs)
         self.input_dim = input_dim
         self.output_dim = 1
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
+        """Evaluate the linear layer."""
         output = self.output(x)
         return output
 
 
 class Sinus(FlaxModel):
+    """Fixed sinusoidal forward model."""
+
     def __init__(self, input_dim, freq, amp=1, noise_std=0.1):
+        """Create ``amp * sin(2 pi freq x)``; extra arguments are compatibility parameters."""
         self.output = lambda x: amp * jnp.sin(2 * jnp.pi * freq * x)
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
+        """Evaluate the sinusoidal response."""
         output = self.output(x)
         return output
 
 
 class SinusInverse(FlaxModel):
+    """Fixed inverse-coordinate sinusoidal forward model."""
+
     def __init__(self, input_dim, freq_init, amp=1, noise_std=0.1):
+        """Create ``amp * sin(2 pi freq_init / x)``."""
         self.output = lambda x: amp * (jnp.sin(2 * jnp.pi * freq_init / x))
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
+        """Evaluate the inverse sinusoidal response."""
         output = self.output(x)
         return output
 
 
 class CNN(FlaxModel):
-    """A simple CNN model."""
+    """Small convolutional classifier for image-shaped designs."""
 
     def __init__(self, *, rngs: nnx.Rngs):
+        """Build the convolution, pooling, dropout, and output layers."""
         self.conv1 = nnx.Conv(1, 2, kernel_size=(3, 3), rngs=rngs)
         # self.batch_norm1 = nnx.BatchNorm(8, rngs=rngs)
         self.dropout1 = nnx.Dropout(rate=0.025)
         self.conv2 = nnx.Conv(2, 2, kernel_size=(3, 3), rngs=rngs)
         # self.batch_norm2 = nnx.BatchNorm(16, rngs=rngs)
-        self.avg_pool = partial(nnx.avg_pool, window_shape=(2, 2), strides=(2, 2))
+        self.avg_pool = partial(
+            nnx.avg_pool, window_shape=(2, 2), strides=(2, 2))
         self.output = nnx.Linear(7 * 7 * 2, 10, rngs=rngs)
         # self.dropout2 = nnx.Dropout(rate=0.025)
         # self.linear2 = nnx.Linear(128, 10, rngs=rngs)
@@ -1030,11 +1084,13 @@ class CNN(FlaxModel):
         self.weight_mapping, self.weight_size = self._create_weight_mapping()
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
+        """Apply convolutional feature extraction and classify the image."""
         if x.ndim == 3:
             flattened_shape = 1
         else:
             flattened_shape = x.shape[0]
-        conv1 = self.avg_pool(nnx.relu(self.dropout1(self.conv1(x), rngs=rngs)))
+        conv1 = self.avg_pool(
+            nnx.relu(self.dropout1(self.conv1(x), rngs=rngs)))
         conv2 = self.avg_pool(nnx.relu(self.conv2(conv1)))
         conv2_flatten = conv2.reshape(flattened_shape, 1, 1, -1)  # flatten
         output = self.output(conv2_flatten)
@@ -1056,16 +1112,16 @@ class NeuralNetworkBase(Model):
 
     def __init__(self, model: FlaxModel):
         """
-        Initialize neural network parameters.
+        Wrap an NNX model as a measurement model.
+
         Args:
-            input_dim: Dimensionality of input (state + design)
-            hidden_dim: Number of hidden units in the network
-            key: JAX random key for reproducibility (optional)
+            model: NNX model whose parameters form the latent state.
         """
         self.flax_model = model
         self.graphdef, _ = nnx.split(self.flax_model)
 
     def build_loss_fn(self, x_train, y_train):
+        """Return the task-specific loss closure used by :meth:`train`."""
         return lambda x: None
 
     def __call__(self, z, x, **kwargs):
@@ -1086,6 +1142,7 @@ class NeuralNetworkBase(Model):
         return output
 
     def jacobian(self, z, x):
+        """Return derivatives of each output with respect to flat parameters."""
         model = deepcopy(self.flax_model)
         state = model.weights_to_state(z)
         nnx.update(model, state)
@@ -1138,8 +1195,12 @@ class NeuralNetworkBase(Model):
 
 
 class NeuralNetworkClassifier(NeuralNetworkBase):
+    """NNX measurement model trained with softmax cross-entropy."""
+
     def build_loss_fn(self, x_train, y_train):
+        """Build a mean softmax cross-entropy loss for one training batch."""
         def loss_fn(model, rngs: nnx.Rngs):
+            """Compute cross-entropy for the current model parameters."""
             logits = model(x_train, rngs)
             loss = optax.softmax_cross_entropy(
                 logits=logits.squeeze(), labels=y_train.squeeze()
@@ -1150,8 +1211,12 @@ class NeuralNetworkClassifier(NeuralNetworkBase):
 
 
 class NeuralNetworkRegressor(NeuralNetworkBase):
+    """NNX measurement model trained with mean squared error."""
+
     def build_loss_fn(self, x_train, y_train):
+        """Build a mean squared error loss for one training batch."""
         def loss_fn(model, rngs: nnx.Rngs):
+            """Compute regression error for the current model parameters."""
             predictions = model(x_train, rngs).squeeze()
             loss = jnp.mean((predictions - y_train.squeeze()) ** 2)
             return loss

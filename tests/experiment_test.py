@@ -14,7 +14,6 @@ from bed.models import (
     DenseNN,
 )
 from .utils import linear_model_epig
-from matplotlib import pyplot as plt
 from tqdm import trange
 
 
@@ -22,7 +21,8 @@ class TestExperiment0:
     jax.config.update("jax_enable_x64", True)
     design_dim = 2
     latent_dim = design_dim + 1
-    latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
+    latent_true = 1 * \
+        jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
     latent_var = 0.1
     latent_innovation = 0
     measurement_cov = 0.25 * jnp.eye(1)
@@ -37,7 +37,8 @@ class TestExperiment0:
     plot_results = True
     num_train = 20
     num_test = 80
-    training_kwargs = {"learning_rate": 0.01, "epochs": 500, "rngs": nnx.Rngs(0)}
+    training_kwargs = {"learning_rate": 0.01,
+                       "epochs": 500, "rngs": nnx.Rngs(0)}
     data = create_synthetic_data(
         model_true,
         num_train,
@@ -132,7 +133,8 @@ class TestExperiment1:
     jax.config.update("jax_enable_x64", True)
     design_dim = 50
     latent_dim = design_dim + 1
-    latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
+    latent_true = 1 * \
+        jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
     latent_var = 0.1
     latent_innovation = 0
     measurement_cov = 0.25 * jnp.eye(1)
@@ -147,7 +149,8 @@ class TestExperiment1:
     plot_results = False
     num_train = 100
     num_test = 200
-    training_kwargs = {"learning_rate": 0.01, "epochs": 50, "rngs": nnx.Rngs(0)}
+    training_kwargs = {"learning_rate": 0.01,
+                       "epochs": 50, "rngs": nnx.Rngs(0)}
     data = create_synthetic_data(
         model_true,
         num_train,
@@ -249,14 +252,16 @@ class TestExperiment2:
         + hidden_dim_1 * 1
         + 1
     )
-    latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
+    latent_true = 1 * \
+        jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
     latent_var = 0.05
     latent_innovation = 0
     measurement_cov = 100 * jnp.eye(1)
     # epochs = int(10 * latent_dim)
     epochs = 100
     # design_cov = jnp.array([[1.0, 0.99], [0.99, 1.0]])
-    training_kwargs = {"learning_rate": 0.01, "epochs": 50, "rngs": nnx.Rngs(0)}
+    training_kwargs = {"learning_rate": 0.01,
+                       "epochs": 50, "rngs": nnx.Rngs(0)}
     random_key = jax.random.PRNGKey(0)
     model = DenseNN(
         input_dim=design_dim,
@@ -367,7 +372,8 @@ class TestExperiment2:
 class TestExperiment3:
     jax.config.update("jax_enable_x64", True)
     latent_dim = 24 + 20 + 5
-    latent_true = 2 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
+    latent_true = 2 * \
+        jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
     design_dim = 5
     latent_var = 0.1
     latent_innovation = 0
