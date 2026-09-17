@@ -6,18 +6,21 @@ x64 = true
 type = "DNN"
 seed = 0
 input_dim = 1
-hidden_dims = [16,16]
+hidden_dims = [21]
+activations = "tanh"
 output_dim = 1
 
 [data]
 kind = "1d_regression"
 [data.outcome_model]
 type="DNN"
-seed=0
+seed=10
 input_dim=1
 hidden_dims=[21]
 output_dim=1
-activation='tanh'
+activations ="tanh"
+random_weights = true
+random_weights_scale = 4
 
 
 [latent_cov]
@@ -29,10 +32,11 @@ variance = 0.01
 dim = 1
 
 [experiment]
-filter_type = ["ukf", "ekf"]
-filter_params=[{alpha=10},{}]
+filter_type = ["ekf","ukf"]
+filter_params=[{},{alpha=2}]
 latent_innovation = 0.1
 pre_train_model = false
+trace=false
 
 [training]
 learning_rate = 0.05
@@ -41,6 +45,6 @@ seed = 0
 
 [run]
 strategies = ["EPIG", "EIG"]
-iterations = 40
+iterations = 100
 optimizer_method = "brute_force"
-warm_start = 10
+warm_start = 5

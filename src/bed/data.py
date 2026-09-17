@@ -500,5 +500,6 @@ def get_1d_regression(model, train_size=200, test_pool_size=50, test_glob_size=5
         x_test_pool,
         y_test_pool,
         x_test_glob,
-        y_test_glob
+        y_test_glob,
+        underlying_model=model
     )

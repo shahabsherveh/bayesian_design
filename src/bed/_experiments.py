@@ -215,7 +215,6 @@ class Experiment:
 
         y_0_pdf_vals = get_normal_likelihood(epsilon_0)
         y_1_pdf_vals = get_normal_likelihood(epsilon_1)
-        # __import__("ipdb").set_trace()
         mi = (
             jnp.log((y_0_pdf_vals * y_1_pdf_vals).mean(axis=0))
             - jnp.log(y_0_pdf_vals.mean(axis=0))
@@ -411,6 +410,7 @@ class Experiment:
         epochs,
         optimizer="grid_search",
         optimizer_params={"lr": 1, "max_iters": 50},
+        trace=False
     ):
         """
         Run sequential experimental design for multiple epochs.
@@ -451,24 +451,29 @@ class Experiment:
         criterion_func = criterion_dict.get(
             criterion_label, self.calculate_random
         )
-        designs = []
+        selected_designs = []
         crit_values = []
         sd_values_test_pool = []
         rmse_values_test_pool = []
         sd_values_test_glob = []
         rmse_values_test_glob = []
+        filters = []
 
         progress_bar = tqdm(
             range(epochs), total=epochs, desc=f"Running {criterion_label} Experiment"
         )
         filtr = filter_instance
-
+        design_space = jnp.linspace(
+            self.design_space.min(), self.design_space.max()
+        )
         for i in progress_bar:
             estimate_mean, estimate_cov = filtr.state_prior
             mean_test_pool, cov_test_pool = filtr.measurement_prior(
                 self.data.x_test_pool)
             mean_test_glob, cov_test_glob = filtr.measurement_prior(
                 self.data.x_test_glob)
+            if trace:
+                filters.append(deepcopy(filtr))
             rmse_predictions_pool = self.calculate_rmse_predictions(
                 mean_test_pool, self.data.y_test_pool.squeeze()
             )
@@ -485,10 +490,10 @@ class Experiment:
                 params=optimizer_params,
             )
             measurement = self.data.observe(best_index)
-            posterior_mean, posterior_cov = filtr.get_state_posterior(
+            posterior = filtr.get_state_posterior(
                 measurement, x_opt[None, ...])
 
-            filtr.state_prior = posterior_mean, posterior_cov
+            filtr.state_prior = posterior
             progress_bar.set_postfix(
                 {
                     "Global SD": f"{sd_glob.round(2):.2f}",
@@ -498,7 +503,7 @@ class Experiment:
                     f"{criterion_label}": f"{crit_value.round(3):.2f}",
                 }
             )
-            designs.append(x_opt)
+            selected_designs.append((x_opt, measurement))
             crit_values.append(crit_value)
             rmse_values_test_glob.append(rmse_predictions_glob)
             rmse_values_test_pool.append(rmse_predictions_pool)
@@ -509,11 +514,13 @@ class Experiment:
             sd_values_test_pool,
             rmse_values_test_glob,
             rmse_values_test_pool,
-            jnp.array(designs),
+            selected_designs,
             crit_values,
+            data=self.data,
             design_space=self.design_space,
             crit_label=criterion_label,
-            filter_type=filter_type
+            filter_type=filter_type,
+            filters=filters,
         )
 
     def calculate_rmse(self, cov):
@@ -569,6 +576,7 @@ class Experiment:
         iterations=10,
         optimizer_method="brute_force",
         optimizer_params={"lr": 1, "max_iters": 50},
+        trace=False
     ):
         """
         Compare EPIG and EIG design strategies side-by-side.
@@ -608,7 +616,9 @@ class Experiment:
                 epochs=self.warm_start,
                 optimizer=optimizer_method,
                 optimizer_params=optimizer_params,
+                trace=trace
             )
+            results.append(r)
             for j, criterion in enumerate(criteria):
                 # Each criterion must start from the same warm-start posterior;
                 # otherwise later strategies would inherit earlier observations.
@@ -622,6 +632,7 @@ class Experiment:
                         epochs=iterations,
                         optimizer=optimizer_method,
                         optimizer_params=optimizer_params,
+                        trace=trace
                     )
                     results.append(r)
                 except Exception as e:
@@ -653,11 +664,13 @@ class ExperimentResults:
         sd_pool,
         rmse_global,
         rmse_pool,
-        designs,
+        selected_designs,
         crit_values,
+        data,
         crit_label="EPIG",
         filter_type="ekf",
         design_space=None,
+        filters=[],
     ):
         """Initialize metric histories and selected designs.
 
@@ -673,11 +686,13 @@ class ExperimentResults:
         self.sd_pool = sd_pool
         self.rmse_glob = rmse_global
         self.rmse_pool = rmse_pool
-        self.designs = designs
+        self.selected_designs = selected_designs
         self.crit_values = crit_values
         self.crit_label = crit_label
         self.filter_type = filter_type
         self.design_space = design_space
+        self.filters = filters
+        self.data = data
 
 
 class MultiExperimentResults:
@@ -698,4 +713,15 @@ class MultiExperimentResults:
         Args:
             experiment_results_list: List of ExperimentResults objects to compare
         """
-        self.experiment_results_list = experiment_results_list
+        self.experiment_results_dict = self._list_to_dict(
+            experiment_results_list)
+
+    @staticmethod
+    def _list_to_dict(l):
+        d = {}
+        for e in l:
+            d[e.filter_type] = {}
+        for e in l:
+            d[e.filter_type][e.crit_label] = e
+
+        return d

@@ -24,7 +24,7 @@ dim = 1
 
 [experiment]
 filter_type = ["ukf", "ekf"]
-filter_params=[{alpha=0.001},{}]
+filter_params=[{alpha=10},{}]
 latent_innovation = 0
 pre_train_model = false
 
@@ -35,6 +35,6 @@ seed = 0
 
 [run]
 strategies = ["EPIG", "EIG"]
-iterations = 40
+iterations = 190
 optimizer_method = "brute_force"
 warm_start = 10

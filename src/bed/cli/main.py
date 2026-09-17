@@ -50,7 +50,14 @@ def _build_model(model_cfg: dict):
                 "activations", model_cfg.get("activation", "gelu")
             ),
         )
+        if model_cfg.get("random_weights", False):
+            scale = model_cfg.get("random_weights_scale", 1)
+            z = scale * jax.random.normal(key=jax.random.key(seed),
+                                          shape=(model.weight_size, 1))
+            state = model.weights_to_state(z)
+            nnx.update(model, state)
         wrapper = NeuralNetworkRegressor(model)
+        breakpoint()
     elif model_type == "CNN":
         model = CNN(rngs=nnx.Rngs(seed))
         wrapper = NeuralNetworkClassifier(model)
@@ -225,6 +232,7 @@ def run_experiment_from_config(
     filter_params = cfg["experiment"].get("filter_params", [{}])
     if isinstance(filter_params, dict):
         filter_params = [filter_params]
+    trace = cfg["experiment"].get('trace', False)
     results = experiment.run_experiment(
         criteria=strategies or run_cfg["strategies"],
         iterations=iterations or run_cfg["iterations"],
@@ -233,6 +241,7 @@ def run_experiment_from_config(
             "optimizer_params", {"lr": 1, "max_iters": 50}),
         filter_types=filter_types,
         filter_params=filter_params,
+        trace=trace
     )
     # if show_plot:
     #     results.plot_comparison()
