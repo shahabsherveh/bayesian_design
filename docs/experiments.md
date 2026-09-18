@@ -67,6 +67,32 @@ measurement_model = NeuralNetworkRegressor(model)
 `data.x_test`. `Data.observe()` uses the same ordering, so custom data
 providers must preserve that relationship.
 
+## Initialising the belief by empirical Bayes
+
+By default the filter processes the warm-start observations itself, starting
+from `latent_cov` and `measurement_error` as configured. With
+`init = "empirical_bayes"` the runner instead fits the *scale* of the prior
+covariance (and, with `fit_noise = true`, of the measurement covariance) by
+maximising the marginal likelihood of the model linearised at the MAP of the
+warm-start observations, and starts every criterion from the Laplace belief
+at that MAP (`bed.empirical_bayes.empirical_bayes_init`). The configured
+matrices act as shapes; only their scales are fitted, which is all a handful
+of warm-start points can support. For a linear model the procedure is exact.
+
+```toml
+[experiment]
+init = "empirical_bayes"      # or "filter" (default)
+
+[empirical_bayes]             # optional
+fit_noise = false             # also fit the measurement-covariance scale
+iterations = 3                # MAP / hyperparameter alternations
+```
+
+The fitted scales and the evidence are stored on the warm-start result as
+`init_info` (an `EmpiricalBayesResult`). The same function can be called
+directly on any `Model` with `__call__` and `jacobian`, e.g. to set
+`latent_cov` from pilot data before building an `Experiment`.
+
 ## Runtime and reproducibility
 
 The research scripts use both JAX PRNG keys and NumPy/SciPy random sampling.
