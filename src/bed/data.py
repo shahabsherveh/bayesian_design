@@ -2,6 +2,7 @@
 
 from jax import numpy as jnp
 import jax
+import numpy as np
 from scipy import stats
 
 from bed.models import FlaxModel
@@ -211,16 +212,20 @@ def create_synthetic_normal_with_outliers_data_1D(
     key=jax.random.PRNGKey(0),
 ) -> Data:
     """Generate one-dimensional normal data with explicit outlier designs."""
-    x_train = jax.random.normal(shape=(num_train,), key=key) * var + mean
-    x_test = jax.random.normal(shape=(num_test,), key=key) * var + mean
-    x_test = jnp.append(x_test, outliers)
-    y_train = _evaluate_model(model, x_train)
-    y_test = _evaluate_model(model, x_test)
+    key_train, key_test = jax.random.split(key)
+    x_train = jax.random.normal(shape=(num_train,), key=key_train) * var + mean
+    x_test = jax.random.normal(shape=(num_test,), key=key_test) * var + mean
+    x_test = jnp.append(x_test, jnp.asarray(outliers))
+    x_train = x_train[:, None, None, None]
+    x_test = x_test[:, None, None, None]
+    y_train = _reshape_outputs(_evaluate_model(model, x_train), num_train)
+    y_test = _reshape_outputs(_evaluate_model(model, x_test), x_test.shape[0])
     return Data(
-        x_train=x_train[:, None, None, None],
-        x_test=x_test[:, None, None, None],
+        x_train=x_train,
         y_train=y_train,
-        y_test=y_test,
+        x_test_pool=x_test,
+        y_test_pool=y_test,
+        underlying_model=model,
     )
 
 
@@ -467,9 +472,11 @@ def get_uci_data(
     uci_data = fetch_ucirepo(dataset)
 
     x = uci_data.data.features
-    scaler = StandardScaler()
-    x = jnp.array(scaler.fit_transform(x))[:, None, None, :]
-    y = jnp.atleast_2d(uci_data.data.targets.values)[:, None, None, :]
+    x = jnp.array(StandardScaler().fit_transform(x))[:, None, None, :]
+    # Targets are standardized as well, so the measurement variance in the
+    # configs and the reported RMSE are in units of the target's standard deviation.
+    y = np.asarray(uci_data.data.targets.values, dtype=float).reshape(len(x), -1)
+    y = jnp.array(StandardScaler().fit_transform(y))[:, None, None, :]
     x_train, x_test, y_train, y_test = train_test_split(
         x, y, test_size=test_size, random_state=random_state)
     pca = PCA(1)
