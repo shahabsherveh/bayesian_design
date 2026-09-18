@@ -6,3 +6,4 @@ build/
 .python-version
 paper.pdf
 .env
+SKILL.md
