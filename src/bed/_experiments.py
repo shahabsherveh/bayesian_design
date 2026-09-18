@@ -49,6 +49,7 @@ class Experiment:
         pre_train_model=False,
         training_kwargs=None,
         plot_inter_results=False,
+        seed: int = 0,
     ):
         """
         Initialize sequential experimental design framework.
@@ -101,6 +102,10 @@ class Experiment:
         )
         self.latent_innovation = latent_innovation
         self.warm_start = warm_start
+        self.seed = seed
+        # Random source for the RANDOM criterion and Monte Carlo EPIG; `run`
+        # re-seeds it so every (filter, criterion) run is reproducible.
+        self._rng = np.random.default_rng(seed)
 
     @staticmethod
     def build_prior(
@@ -222,7 +227,7 @@ class Experiment:
         )
         return jnp.where(~jnp.isnan(mi), mi, -jnp.inf)
 
-    def calculate_epig_mc(self, x, x_1=None, num_latent_samples=1000, **kwargs):
+    def calculate_epig_mc(self, x, filtr, x_1=None, num_latent_samples=1000, **kwargs):
         """
         Calculate EPIG using Monte Carlo sampling (incomplete implementation).
         Intended to compute EPIG by sampling from the joint distribution of
@@ -235,21 +240,18 @@ class Experiment:
         if x.ndim == 1:
             x = x[:, None]
         if x_1 is None:
-            # x_1 = jax.random.choice(
-            #     jax.random.key(102), a=self.design_space, shape=(num_design_samples,)
-            # ).T
-            # x_1 = self.design_dist.rvs(size=num_design_samples).T
-            x_1 = self.design_space
+            x_1 = self.design_pool
         M = x_1.shape[0]
         N = x.shape[0]
         K = num_latent_samples
+        state_mean, state_cov = filtr.state_prior
         outcome_latent_samples = multivariate_normal(
-            mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
-        ).rvs(size=M)
+            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
+        ).rvs(size=M, random_state=self._rng)
         y_0_samples = jax.vmap(lambda theta: self.model(theta.T, x))(
             outcome_latent_samples
         )[None, ...].squeeze(-1)
-        noise_0 = np.random.normal(
+        noise_0 = self._rng.normal(
             loc=0,
             scale=np.sqrt(self.measurement_error),
             size=y_0_samples.shape,
@@ -258,7 +260,7 @@ class Experiment:
         y_1_samples = jax.vmap(lambda theta: self.model(theta.T, x_1))(
             outcome_latent_samples
         )
-        noise_1 = np.random.normal(
+        noise_1 = self._rng.normal(
             loc=0,
             scale=np.sqrt(self.measurement_error),
             size=y_1_samples.shape,
@@ -267,8 +269,8 @@ class Experiment:
         y_1_samples = y_1_samples.diagonal().T.swapaxes(0, 1)[..., None]
 
         latent_samples = multivariate_normal(
-            mean=self.ekf.state_prior[0].flatten(), cov=self.ekf.state_prior[1]
-        ).rvs(size=K)
+            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
+        ).rvs(size=K, random_state=self._rng)
         mi = self.calculate_mutual_information_mc(
             y_1_samples,
             x_1,
@@ -312,7 +314,7 @@ class Experiment:
         )(key)
         return val
 
-    def optimize(self, criterion_func, method, filtr, params={"lr": 1, "max_iters": 50}):
+    def optimize(self, criterion_func, method, filtr, params={"lr": 1, "max_iters": 50}, exclude=None):
         """
         Optimize design using gradient ascent on information criterion.
 
@@ -347,13 +349,19 @@ class Experiment:
             Uses gradient ASCENT (not descent) since we maximize information.
             Progress displayed via tqdm progress bar.
         """
-        seeds = np.random.randint(
+        seeds = self._rng.integers(
             0, 10000, size=(self.design_space.shape[0],)
         )  # Random keys for randomness in criterion
         keys = jax.vmap(jax.random.key)(seeds)
         if method == "brute_force":
-            pool_values = criterion_func(
-                x=self.design_space, filtr=filtr, key=keys)
+            pool_values = jnp.asarray(criterion_func(
+                x=self.design_space, filtr=filtr, key=keys)).reshape(-1)
+            if exclude:
+                # Pool-based selection is without replacement: a design whose
+                # label is already in the filter cannot be selected again.
+                if len(exclude) >= pool_values.shape[0]:
+                    raise ValueError("Every design in the pool has been observed.")
+                pool_values = pool_values.at[jnp.asarray(sorted(exclude))].set(-jnp.inf)
             shuffled_indices = jax.random.permutation(
                 jax.random.key(0), self.design_space.shape[0]
             )
@@ -369,7 +377,7 @@ class Experiment:
                 scale=0.01,
             )
             grad_func = jax.value_and_grad(
-                lambda x: criterion_func(x, key=keys)[0])
+                lambda x: criterion_func(x, filtr=filtr, key=keys)[0])
             max_iters = params.get("max_iters")
             lr = params.get("lr")
             pbar = tqdm(range(max_iters), desc="Optimizing design", leave=True)
@@ -394,7 +402,7 @@ class Experiment:
                 minval=self.design_space.min(axis=0),
                 maxval=self.design_space.max(axis=0),
             )
-            grid_values = criterion_func(x=grid, key=keys)
+            grid_values = criterion_func(x=grid, filtr=filtr, key=keys)
             x = grid[jnp.argmax(grid_values)]
             best_index = x
             crit_value = grid_values.max()
@@ -410,7 +418,10 @@ class Experiment:
         epochs,
         optimizer="grid_search",
         optimizer_params={"lr": 1, "max_iters": 50},
-        trace=False
+        trace=False,
+        exclude=None,
+        rng=None,
+        label=None,
     ):
         """
         Run sequential experimental design for multiple epochs.
@@ -448,9 +459,13 @@ class Experiment:
             "EIG": self.calculate_eig,
             "EPIG-MC": self.calculate_epig_mc,
             "RANDOM": self.calculate_random}
-        criterion_func = criterion_dict.get(
-            criterion_label, self.calculate_random
-        )
+        if criterion_label not in criterion_dict:
+            raise ValueError(
+                f"Unknown criterion '{criterion_label}'; choose from {sorted(criterion_dict)}")
+        criterion_func = criterion_dict[criterion_label]
+        self._rng = rng if rng is not None else np.random.default_rng(self.seed)
+        used_indices = set() if exclude is None else {int(i) for i in exclude}
+        selected_indices = []
         selected_designs = []
         crit_values = []
         sd_values_test_pool = []
@@ -463,9 +478,6 @@ class Experiment:
             range(epochs), total=epochs, desc=f"Running {criterion_label} Experiment"
         )
         filtr = filter_instance
-        design_space = jnp.linspace(
-            self.design_space.min(), self.design_space.max()
-        )
         for i in progress_bar:
             estimate_mean, estimate_cov = filtr.state_prior
             mean_test_pool, cov_test_pool = filtr.measurement_prior(
@@ -488,8 +500,12 @@ class Experiment:
                 filtr=filtr,
                 method=optimizer,
                 params=optimizer_params,
+                exclude=used_indices,
             )
             measurement = self.data.observe(best_index)
+            if jnp.ndim(best_index) == 0 and jnp.issubdtype(jnp.asarray(best_index).dtype, jnp.integer):
+                used_indices.add(int(best_index))
+                selected_indices.append(int(best_index))
             posterior = filtr.get_state_posterior(
                 measurement, x_opt[None, ...])
 
@@ -518,9 +534,10 @@ class Experiment:
             crit_values,
             data=self.data,
             design_space=self.design_space,
-            crit_label=criterion_label,
+            crit_label=criterion_label if label is None else label,
             filter_type=filter_type,
             filters=filters,
+            selected_indices=selected_indices,
         )
 
     def calculate_rmse(self, cov):
@@ -608,7 +625,8 @@ class Experiment:
                 measurement_error=self.measurement_error,
                 **filter_params[i]
             )
-            r = self.run(
+            # The same seed for every filter gives them the same warm-start designs.
+            warm = self.run(
                 criterion_label="RANDOM",
                 filter_type=filter_type,
                 filter_params=filter_kwargs,
@@ -616,28 +634,28 @@ class Experiment:
                 epochs=self.warm_start,
                 optimizer=optimizer_method,
                 optimizer_params=optimizer_params,
-                trace=trace
+                trace=trace,
+                rng=np.random.default_rng(self.seed),
+                label="WARM-START",
             )
-            results.append(r)
+            results.append(warm)
             for j, criterion in enumerate(criteria):
-                # Each criterion must start from the same warm-start posterior;
-                # otherwise later strategies would inherit earlier observations.
+                # Each criterion starts from a copy of the same warm-start posterior
+                # and may not re-select the warm-start designs.
                 filter_instance_copy = deepcopy(filter_instance)
-                try:
-                    r = self.run(
-                        criterion_label=criterion,
-                        filter_type=filter_type,
-                        filter_params=filter_kwargs,
-                        filter_instance=filter_instance_copy,
-                        epochs=iterations,
-                        optimizer=optimizer_method,
-                        optimizer_params=optimizer_params,
-                        trace=trace
-                    )
-                    results.append(r)
-                except Exception as e:
-                    raise (e)
-                    print(e)
+                r = self.run(
+                    criterion_label=criterion,
+                    filter_type=filter_type,
+                    filter_params=filter_kwargs,
+                    filter_instance=filter_instance_copy,
+                    epochs=iterations,
+                    optimizer=optimizer_method,
+                    optimizer_params=optimizer_params,
+                    trace=trace,
+                    exclude=warm.selected_indices,
+                    rng=np.random.default_rng(self.seed + 1),
+                )
+                results.append(r)
 
         return MultiExperimentResults(results)
 
@@ -671,6 +689,7 @@ class ExperimentResults:
         filter_type="ekf",
         design_space=None,
         filters=[],
+        selected_indices=None,
     ):
         """Initialize metric histories and selected designs.
 
@@ -693,6 +712,7 @@ class ExperimentResults:
         self.design_space = design_space
         self.filters = filters
         self.data = data
+        self.selected_indices = [] if selected_indices is None else list(selected_indices)
 
 
 class MultiExperimentResults:

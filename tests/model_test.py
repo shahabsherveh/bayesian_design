@@ -9,7 +9,9 @@ class TestLinearModel:
         X = jnp.array([[1.0, 0.5], [0.0, 1.0]])
         z = jnp.array([[0.5], [1.0]])
         model = LinearModel()
-        assert model.jacobian(z, X)
+        jacobian = model.jacobian(z, X)
+        assert jacobian.shape == X.shape
+        assert jnp.allclose(jacobian, X)
 
 
 class TestNeuralNetworkModel:
@@ -19,7 +21,8 @@ class TestNeuralNetworkModel:
     latent_true = 2 * jax.random.normal(
         jax.random.PRNGKey(1), shape=(49, 1)
     )  # 4 hidden units, 1 output
-    flax_model = NNFLax(input_dim=5, hidden_dim_0=4, hidden_dim_1=4, rngs=nnx.Rngs(0))
+    # The hand-built weight vectors below assume ReLU hidden units (relu(1) = 1, relu(-1) = 0).
+    flax_model = NNFLax(input_dim=5, hidden_dim_0=4, hidden_dim_1=4, rngs=nnx.Rngs(0), activation="relu")
     model = NeuralNetworkRegressor(flax_model)
     y_train = model(latent_true, x_train)
 
@@ -138,7 +141,8 @@ class TestNeuralNetworkModel:
         assert jacobian.shape == (2, 1, 49)
 
     def test_train(self):
-        model = self.model.train(self.x_train, self.y_train, num_epochs=100)
+        model = self.model.train(self.x_train, self.y_train, rngs=nnx.Rngs(0), epochs=5)
+        assert model is self.model
 
     def test_dense_network_accepts_per_layer_activations(self):
         model = DenseNN(

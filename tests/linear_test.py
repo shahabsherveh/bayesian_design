@@ -70,7 +70,8 @@ class TestLinearGaussianModel:
         problem = model.D_opt_DCP()
         model.plot_optimal_design(problem)
         allocations = problem.var_dict["eta"].value
-        assert np.equal(self.d_points, np.argwhere(allocations).flatten()).all()
+        support = np.flatnonzero(allocations > 1e-4)  # the solver leaves ~1e-9 residuals
+        assert np.array_equal(self.d_points, support)
         assert np.allclose(allocations[self.d_points], self.d_allocation, atol=1e-2)
 
     def test_a_optimality(self):
@@ -84,5 +85,6 @@ class TestLinearGaussianModel:
         problem = model.A_opt_DCP()
         model.plot_optimal_design(problem)
         allocations = problem.var_dict["eta"].value
-        assert np.equal(self.a_points, np.argwhere(allocations).flatten()).all()
+        support = np.flatnonzero(allocations > 1e-4)
+        assert np.array_equal(self.a_points, support)
         assert np.allclose(allocations[self.a_points], self.a_allocation, atol=1e-2)

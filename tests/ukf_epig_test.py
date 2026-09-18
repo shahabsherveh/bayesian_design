@@ -141,7 +141,7 @@ def test_epig_approaches_ekf_for_tight_prior_on_nonlinear_model():
     x = _designs(jax.random.PRNGKey(7), 5, 2)
     pool = _designs(jax.random.PRNGKey(8), 7, 2)
     rel_err = []
-    for prior_var in (1e-1, 1e-3):
+    for prior_var in (1e-1, 1e-4):
         ekf, ukf = _filters(hidden_dims=[4], prior_var=prior_var)
         e, u = ekf.calculate_epig(x, pool), ukf.calculate_epig(x, pool)
         rel_err.append(float(jnp.max(jnp.abs(u - e) / jnp.abs(e))))

@@ -1,6 +1,7 @@
 """Unscented Kalman filtering for nonlinear measurement models."""
 
 from os import environ
+import warnings
 
 from flax.nnx import Rngs
 import jax
@@ -24,10 +25,19 @@ class UKF:
         state_cov_prev,
         state_innovation,
         measurement_error,
-        alpha=0.001,
+        alpha=1.0,
         beta=2.0,
         kappa=0.0,
     ):
+        if not 0 < alpha <= 1:
+            warnings.warn(
+                f"UKF alpha={alpha} is outside (0, 1]; the scaled unscented transform "
+                "places the sigma points alpha*sqrt(d) prior standard deviations from "
+                "the mean and is defined for 0 < alpha <= 1.", stacklevel=2)
+        if beta < alpha**2:
+            warnings.warn(
+                f"UKF beta={beta} < alpha^2={alpha**2}: the sigma-point covariances are "
+                "not guaranteed to be positive semidefinite.", stacklevel=2)
         self.model = model
         self.measurement_error = jnp.asarray(measurement_error)
         self.alpha = alpha

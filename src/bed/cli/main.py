@@ -57,7 +57,6 @@ def _build_model(model_cfg: dict):
             state = model.weights_to_state(z)
             nnx.update(model, state)
         wrapper = NeuralNetworkRegressor(model)
-        breakpoint()
     elif model_type == "CNN":
         model = CNN(rngs=nnx.Rngs(seed))
         wrapper = NeuralNetworkClassifier(model)
@@ -70,6 +69,16 @@ def _build_latent_cov(model, latent_cfg: dict):
     """Construct the latent covariance matrix requested by configuration."""
     import jax.numpy as jnp
     cov_type = latent_cfg["type"]
+    allowed = {"scaled_identity": {"type", "scale"},
+               "he_diagonal": {"type", "bias_var", "kernel_scale"}}
+    if cov_type not in allowed:
+        raise ValueError(f"Unsupported latent covariance type: {cov_type}")
+    unknown = sorted(set(latent_cfg) - allowed[cov_type])
+    if unknown:
+        raise ValueError(
+            f"Unknown keys {unknown} in [latent_cov] for type '{cov_type}'; "
+            f"allowed: {sorted(allowed[cov_type] - {'type'})}"
+        )
     if cov_type == "scaled_identity":
         return latent_cfg["scale"] * jnp.eye(model.weight_size)
     if cov_type == "he_diagonal":
@@ -87,8 +96,14 @@ def _build_latent_cov(model, latent_cfg: dict):
     raise ValueError(f"Unsupported latent covariance type: {cov_type}")
 
 
-def _build_data(data_cfg: dict):
-    """Construct a configured dataset and optional synthetic ground truth."""
+def _build_data(data_cfg: dict, model_cfg: dict | None = None, truth_cfg: dict | None = None):
+    """Construct a configured dataset and optional synthetic ground truth.
+
+    Synthetic data needs an outcome model.  It is taken from ``data.outcome_model``
+    when present; otherwise the main ``[model]`` config is reused with random
+    weights drawn according to the ``[truth]`` section, which is how the older
+    configs (experiment_0 .. experiment_3) specify their ground truth.
+    """
     import jax
     import jax.numpy as jnp
     from flax import nnx
@@ -115,8 +130,18 @@ def _build_data(data_cfg: dict):
             random_state=data_cfg.get("seed", 0),
         )
 
-    model_cfg = data_cfg.get("outcome_model")
-    model_true, _ = _build_model(model_cfg)
+    outcome_cfg = data_cfg.get("outcome_model")
+    if outcome_cfg is None:
+        if model_cfg is None:
+            raise ValueError(
+                "Synthetic data needs [data.outcome_model] or a [model] config to copy.")
+        outcome_cfg = dict(model_cfg)
+        truth_cfg = truth_cfg or {}
+        if truth_cfg.get("enabled", True):
+            outcome_cfg["random_weights"] = True
+            outcome_cfg["random_weights_scale"] = truth_cfg.get("scale", 1.0)
+            outcome_cfg["seed"] = truth_cfg.get("seed", 1234)
+    model_true, _ = _build_model(outcome_cfg)
 
     if kind == "synthetic":
         return create_synthetic_data(
@@ -191,7 +216,7 @@ def run_experiment_from_config(
 
     model, wrapped_model = _build_model(cfg["model"])
     latent_cov = _build_latent_cov(model, cfg["latent_cov"])
-    data = _build_data(cfg["data"])
+    data = _build_data(cfg["data"], cfg["model"], cfg.get("truth"))
     training_cfg = cfg.get("training", {})
     training_kwargs = {
         "learning_rate": training_cfg.get("learning_rate", 0.01),
@@ -203,6 +228,7 @@ def run_experiment_from_config(
     measurement_error = measurement_cfg["variance"] * \
         jnp.eye(measurement_cfg["dim"])
     warm_start = cfg["run"].get('warm_start', 10)
+    seed = cfg["run"].get("seed", 0)
     if dry_run:
         return {
             "config": cfg["_path"],
@@ -223,6 +249,7 @@ def run_experiment_from_config(
         warm_start=warm_start,
         pre_train_model=cfg["experiment"].get("pre_train_model", False),
         training_kwargs=training_kwargs,
+        seed=seed,
     )
 
     run_cfg = cfg["run"]
@@ -307,7 +334,4 @@ def experiment(
 
 
 if __name__ == "__main__":
-    results = run_experiment_from_config(
-        config="experiment_5",
-    )
-    print(results)
+    app()

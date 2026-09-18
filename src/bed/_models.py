@@ -265,14 +265,15 @@ class LinearGaussianModel:
         Args:
             problem: Solved CVXPy problem containing optimal eta values
         """
+        import matplotlib.pyplot as plt
         eta = problem.var_dict["eta"].value.round(2)
-        sns.scatterplot(
-            x=self.observable_designs[:, 0],
-            y=self.observable_designs[:, 1],
-            size=eta,
-            hue=eta,
-            sizes=(20, 200),
+        plt.scatter(
+            self.observable_designs[:, 0],
+            self.observable_designs[:, 1],
+            s=20 + 180 * eta / max(float(eta.max()), 1e-12),
+            c=eta,
         )
+        plt.colorbar(label="allocation")
         plt.show()
 
     def A_opt_criterion(self, eta: list[int], R: np.ndarray) -> float:
@@ -595,14 +596,15 @@ class GP:
             Assumes observable_designs are 2-dimensional for plotting.
             Allocations are rounded to 2 decimal places for display.
         """
+        import matplotlib.pyplot as plt
         eta = problem.var_dict["eta"].value.round(2)
-        sns.scatterplot(
-            x=self.observable_designs[:, 0],
-            y=self.observable_designs[:, 1],
-            size=eta,
-            hue=eta,
-            sizes=(20, 200),
+        plt.scatter(
+            self.observable_designs[:, 0],
+            self.observable_designs[:, 1],
+            s=20 + 180 * eta / max(float(eta.max()), 1e-12),
+            c=eta,
         )
+        plt.colorbar(label="allocation")
         plt.show()
 
     def A_opt_criterion(self, eta: list[int], R: np.ndarray) -> float:
@@ -835,6 +837,7 @@ class GaussianProcessModel:
             sample: Function values at all design points
             observed_idx: Optional indices of observed points to mark
         """
+        import matplotlib.pyplot as plt
         fig, ax = plt.subplots()
         xx1, xx2 = np.meshgrid(
             np.unique(self.X[:, 0]), np.unique(self.X[:, 1]))
@@ -924,6 +927,10 @@ class LinearModel(Model):
             Measurements of shape (1, n)
         """
         return z.T @ jnp.matrix_transpose(x)
+
+    def jacobian(self, z, x):
+        """Jacobian of y = z^T x with respect to z: the design matrix itself."""
+        return jnp.asarray(x)
 
 
 class FlaxModel(nnx.Module):
