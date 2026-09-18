@@ -25,7 +25,7 @@ random_weights_scale = 4
 
 [latent_cov]
 type = "he_diagonal"
-scale = 2
+kernel_scale = 2
 
 [measurement_error]
 variance = 0.01

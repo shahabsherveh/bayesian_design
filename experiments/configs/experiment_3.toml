@@ -31,6 +31,6 @@ epochs = 200
 seed = 0
 
 [run]
-strategies = ["EPIG", "EIG", "EPIG-MC", "RAND"]
+strategies = ["EPIG", "EIG", "EPIG-MC", "RANDOM"]
 iterations = 100
 optimizer_method = "brute_force"
