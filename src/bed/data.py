@@ -475,7 +475,8 @@ def get_uci_data(
     x = jnp.array(StandardScaler().fit_transform(x))[:, None, None, :]
     # Targets are standardized as well, so the measurement variance in the
     # configs and the reported RMSE are in units of the target's standard deviation.
-    y = np.asarray(uci_data.data.targets.values, dtype=float).reshape(len(x), -1)
+    y = np.asarray(uci_data.data.targets.values,
+                   dtype=float).reshape(len(x), -1)
     y = jnp.array(StandardScaler().fit_transform(y))[:, None, None, :]
     x_train, x_test, y_train, y_test = train_test_split(
         x, y, test_size=test_size, random_state=random_state)
@@ -492,8 +493,11 @@ def get_uci_data(
 
 def get_1d_regression(model, train_size=200, test_pool_size=50, test_glob_size=50, interval_train=[-5, 5], interval_test_pool=[2, 4], key=jax.random.key(0)):
     keys = jax.random.split(key, 3)
-    x_train = jax.random.uniform(shape=(train_size, 1, 1, 1),
-                                 minval=interval_train[0], maxval=interval_train[1], key=keys[0])
+    x_train_0 = jax.random.uniform(shape=(train_size, 1, 1, 1),
+                                   minval=interval_train[0], maxval=interval_test_pool[0], key=keys[0])
+    x_train_1 = jax.random.uniform(shape=(train_size, 1, 1, 1),
+                                   minval=interval_test_pool[1], maxval=interval_train[1], key=keys[0])
+    x_train = jnp.concat([x_train_0, x_train_1], axis=0)
     y_train = _evaluate_model(model, x_train)
     x_test_glob = jax.random.uniform(shape=(test_glob_size, 1, 1, 1),
                                      minval=interval_train[0], maxval=interval_train[1], key=keys[1])
