@@ -6,6 +6,7 @@ import numpy as np
 from scipy.stats import gaussian_kde, multivariate_normal
 from tqdm import tqdm
 from .ekf import EKF
+from .empirical_bayes import empirical_bayes_init
 from .ukf import UKF
 from .models import LinearModel, Model, NeuralNetworkRegressor
 from .data import Data
@@ -50,6 +51,8 @@ class Experiment:
         training_kwargs=None,
         plot_inter_results=False,
         seed: int = 0,
+        init: str = "filter",
+        empirical_bayes_kwargs=None,
     ):
         """
         Initialize sequential experimental design framework.
@@ -103,6 +106,14 @@ class Experiment:
         self.latent_innovation = latent_innovation
         self.warm_start = warm_start
         self.seed = seed
+        # How the belief after the warm start is formed: "filter" processes the warm-start
+        # observations with the filter itself; "empirical_bayes" fits the prior scale (and
+        # optionally the noise scale) by marginal likelihood on those observations and starts
+        # every criterion from the Laplace belief at the MAP (see bed.empirical_bayes).
+        if init not in ("filter", "empirical_bayes"):
+            raise ValueError(f"Unknown init '{init}'; choose 'filter' or 'empirical_bayes'.")
+        self.init = init
+        self.empirical_bayes_kwargs = {} if empirical_bayes_kwargs is None else dict(empirical_bayes_kwargs)
         # Random source for the RANDOM criterion and Monte Carlo EPIG; `run`
         # re-seeds it so every (filter, criterion) run is reproducible.
         self._rng = np.random.default_rng(seed)
@@ -638,6 +649,24 @@ class Experiment:
                 rng=np.random.default_rng(self.seed),
                 label="WARM-START",
             )
+            if self.init == "empirical_bayes":
+                idx = jnp.asarray(warm.selected_indices, dtype=int)
+                eb = empirical_bayes_init(
+                    self.model, self.data.x_train[idx], self.data.y_train[idx],
+                    prior_mean=self.state_init_prior[0], prior_cov=self.state_init_prior[1],
+                    noise_cov=self.measurement_error, **self.empirical_bayes_kwargs,
+                )
+                # The warm-start observations are used once, inside the Laplace belief; the
+                # filter starts from it with the fitted observation covariance.
+                filter_instance = fclass(
+                    model=self.model,
+                    state_prev=eb.mean,
+                    state_cov_prev=eb.cov,
+                    state_innovation=self.latent_innovation,
+                    measurement_error=eb.noise_cov,
+                    **filter_params[i]
+                )
+                warm.init_info = eb
             results.append(warm)
             for j, criterion in enumerate(criteria):
                 # Each criterion starts from a copy of the same warm-start posterior
@@ -713,6 +742,7 @@ class ExperimentResults:
         self.filters = filters
         self.data = data
         self.selected_indices = [] if selected_indices is None else list(selected_indices)
+        self.init_info = None   # EmpiricalBayesResult when the warm start was followed by empirical Bayes
 
 
 class MultiExperimentResults:
