@@ -65,6 +65,15 @@ def _build_model(model_cfg: dict):
     return model, wrapper
 
 
+def _build_empirical_bayes(eb_cfg: dict):
+    """Validate the optional [empirical_bayes] table (used when [experiment].init = "empirical_bayes")."""
+    allowed = {"fit_noise", "iterations", "prior_scale_init", "noise_scale_init"}
+    unknown = sorted(set(eb_cfg) - allowed)
+    if unknown:
+        raise ValueError(f"Unknown keys {unknown} in [empirical_bayes]; allowed: {sorted(allowed)}")
+    return dict(eb_cfg)
+
+
 def _build_latent_cov(model, latent_cfg: dict):
     """Construct the latent covariance matrix requested by configuration."""
     import jax.numpy as jnp
@@ -248,6 +257,8 @@ def run_experiment_from_config(
         measurement_error=measurement_error,
         warm_start=warm_start,
         pre_train_model=cfg["experiment"].get("pre_train_model", False),
+        init=cfg["experiment"].get("init", "filter"),
+        empirical_bayes_kwargs=_build_empirical_bayes(cfg.get("empirical_bayes", {})),
         training_kwargs=training_kwargs,
         seed=seed,
     )
