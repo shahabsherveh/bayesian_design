@@ -37,11 +37,15 @@ filter_params=[{},{alpha=2}]
 latent_innovation = 0.1
 pre_train_model = false
 trace=false
-
+init = "empirical_bayes"
+[empirical_bayes]
+fit_noise = false
+iterations = 3
 [training]
 learning_rate = 0.05
 epochs = 200
 seed = 0
+
 
 [run]
 strategies = ["EPIG", "EIG"]
