@@ -48,58 +48,65 @@ def log_marginal_likelihood(model, z_lin, x, y, prior_mean, prior_cov, noise_cov
     ``y ~ N(f(z_lin) + J (mu_0 - z_lin), J Sigma_0 J^T + I (x) R)``. Exact for a linear model, and
     equal to the Gauss--Newton Laplace evidence when ``z_lin`` is the MAP. Evaluated in the
     ``d``-dimensional information form, so the cost does not grow with the cube of ``n``."""
-    z_lin = jnp.asarray(z_lin).reshape(-1)
-    mu0 = jnp.asarray(prior_mean).reshape(-1)
+    z_lin = jnp.asarray(z_lin).reshape(-1); mu0 = jnp.asarray(prior_mean).reshape(-1)
     f, J, d_y = _flatten(model, z_lin, x)
     n = f.size // d_y
     Rf = _block_noise(noise_cov, n, d_y)
     r = jnp.asarray(y).reshape(-1) - (f + J @ (mu0 - z_lin))
     S0 = jnp.asarray(prior_cov)
-    LR = jnp.linalg.cholesky(Rf)
-    L0 = jnp.linalg.cholesky(S0)
+    LR = jnp.linalg.cholesky(Rf); L0 = jnp.linalg.cholesky(S0)
     Rinv_r = jax.scipy.linalg.cho_solve((LR, True), r)
     Rinv_J = jax.scipy.linalg.cho_solve((LR, True), J)
-    # posterior precision
-    A = jnp.linalg.inv(S0) + J.T @ Rinv_J
+    A = jnp.linalg.inv(S0) + J.T @ Rinv_J                      # posterior precision
     LA = jnp.linalg.cholesky(A)
     b = J.T @ Rinv_r
     quad = r @ Rinv_r - b @ jax.scipy.linalg.cho_solve((LA, True), b)
-    logdet = 2 * jnp.sum(jnp.log(jnp.diag(LR))) + 2 * \
-        jnp.sum(jnp.log(jnp.diag(L0))) + 2 * jnp.sum(jnp.log(jnp.diag(LA)))
+    logdet = 2 * jnp.sum(jnp.log(jnp.diag(LR))) + 2 * jnp.sum(jnp.log(jnp.diag(L0))) + 2 * jnp.sum(jnp.log(jnp.diag(LA)))
     return -0.5 * (quad + logdet + r.size * jnp.log(2 * jnp.pi))
 
 
-def map_estimate(model, x, y, prior_mean, prior_cov, noise_cov, z_init=None, restarts=4, seed=0):
+def map_estimate(model, x, y, prior_mean, prior_cov, noise_cov, z_init=None, restarts=3, seed=0,
+                 from_prior_mean=True, ftol=1e-6, xtol=1e-6, max_nfev=1000):
     """MAP of the latent parameters under the Gaussian prior, by Levenberg--Marquardt on the
-    whitened residuals, from the prior mean, ``z_init`` and ``restarts`` draws from the prior; the
-    lowest cost wins. The restarts matter: for models such as ``a tanh(b x)`` the prior mean zero
-    is an exact stationary point and a single start never leaves it. Returns the MAP and the
-    Laplace (Gauss--Newton) covariance at it."""
-    mu0 = np.asarray(prior_mean, dtype=float).reshape(-1)
-    d = mu0.size
-    L0 = np.linalg.cholesky(np.asarray(prior_cov, dtype=float))
-    L0inv = np.linalg.inv(L0)
+    whitened residuals. Starts from the prior mean (unless ``from_prior_mean=False``) and from
+    ``z_init`` when given; the lowest cost wins. If the prior mean is a stationary point of the
+    objective -- as for ``a tanh(b x)`` with ``a = b = 0``, where a single start never leaves it --
+    ``restarts`` additional starts are drawn from the prior; the test is a vanishing column of the
+    data Jacobian at the prior mean. Returns the MAP and the Laplace (Gauss--Newton) covariance at
+    it."""
+    mu0 = np.asarray(prior_mean, dtype=float).reshape(-1); d = mu0.size
+    L0 = np.linalg.cholesky(np.asarray(prior_cov, dtype=float)); L0inv = np.linalg.inv(L0)
     yv = np.asarray(y, dtype=float).reshape(-1)
-    n = int(jnp.asarray(x).shape[0])
-    d_y = yv.size // n
-    LR = np.linalg.cholesky(np.asarray(_block_noise(noise_cov, n, d_y)))
-    LRinv = np.linalg.inv(LR)
+    n = int(jnp.asarray(x).shape[0]); d_y = yv.size // n
+    LR = np.linalg.cholesky(np.asarray(_block_noise(noise_cov, n, d_y))); LRinv = np.linalg.inv(LR)
+
+    # One compiled evaluation of the model and its Jacobian for these designs; Levenberg--Marquardt
+    # calls it hundreds of times, and the un-compiled network Jacobian costs ~10 ms per call.
+    fj = jax.jit(lambda z: _flatten(model, z, x)[:2])
 
     def resid(z):
-        f, _, _ = _flatten(model, z, x)
+        f, _ = fj(jnp.asarray(z))
         return np.concatenate([LRinv @ (np.asarray(f) - yv), L0inv @ (z - mu0)])
 
     def jacr(z):
-        _, J, _ = _flatten(model, z, x)
+        _, J = fj(jnp.asarray(z))
         return np.concatenate([LRinv @ np.asarray(J), L0inv])
 
-    starts = [mu0] + ([np.asarray(z_init, dtype=float).reshape(-1)]
-                      if z_init is not None else [])
-    rng = np.random.default_rng(seed)
-    starts += [mu0 + L0 @ rng.normal(size=d) for _ in range(int(restarts))]
+    starts = [mu0] if from_prior_mean else []
+    if z_init is not None:
+        starts.append(np.asarray(z_init, dtype=float).reshape(-1))
+    if from_prior_mean:
+        # A parameter whose column of the data Jacobian vanishes at the prior mean has no
+        # first-order signal there (a tanh(b x) at a = b = 0, a layer initialised at zero): a single
+        # start would leave it at the prior mean, so draw restarts from the prior in that case.
+        _, J0 = fj(jnp.asarray(mu0))
+        col = np.linalg.norm(np.asarray(J0), axis=0)
+        if np.any(col < 1e-8 * max(col.max(), 1e-300)):
+            rng = np.random.default_rng(seed)
+            starts += [mu0 + L0 @ rng.normal(size=d) for _ in range(int(restarts))]
     best = None
     for z0 in starts:
-        r = least_squares(resid, z0, jac=jacr, method="lm", max_nfev=5000)
+        r = least_squares(resid, z0, jac=jacr, method="lm", ftol=ftol, xtol=xtol, max_nfev=max_nfev)
         if best is None or r.cost < best.cost:
             best = r
     Jw = jacr(best.x)
@@ -112,60 +119,55 @@ class EmpiricalBayesResult:
     mean: jnp.ndarray            # (d, 1) MAP under the fitted prior
     cov: jnp.ndarray             # (d, d) Laplace covariance at the MAP
     prior_cov: jnp.ndarray       # (d, d) fitted prior covariance tau * S
-    # (d_y, d_y) fitted (or kept) observation covariance s * R_0
-    noise_cov: jnp.ndarray
+    noise_cov: jnp.ndarray       # (d_y, d_y) fitted (or kept) observation covariance s * R_0
     prior_scale: float
     noise_scale: float
     log_marginal_likelihood: float
-    # (prior_scale, noise_scale, lml) per iteration
-    history: list = field(default_factory=list)
+    history: list = field(default_factory=list)   # (prior_scale, noise_scale, lml) per iteration
 
 
-def empirical_bayes_init(model, x, y, prior_mean, prior_cov, noise_cov, fit_noise=False, iterations=3,
-                         prior_scale_init=1.0, noise_scale_init=1.0):
+def empirical_bayes_init(model, x, y, prior_mean, prior_cov, noise_cov, fit_noise=False, iterations=2,
+                         prior_scale_init=1.0, noise_scale_init=1.0, z_init=None):
     """Choose the prior scale (and optionally the noise scale) by type-II maximum likelihood on the
     observations ``(x, y)``, and return the Laplace belief at the MAP to start the filter from.
 
     ``prior_cov`` and ``noise_cov`` are the *shapes* ``S`` and ``R_0``; the fitted covariances are
     ``tau * S`` and ``s * R_0``. Alternates ``iterations`` times between the MAP under the current
     hyperparameters and the hyperparameters maximising the evidence of the model linearised at
-    that MAP. One iteration is exact for a linear model.
+    that MAP. One iteration is exact for a linear model. ``z_init`` is an optional starting point
+    for the first MAP search, e.g. the filter's mean after the warm start; it is a starting point
+    only -- the prior stays the prior, or the warm-start data would be counted twice.
     """
-    S = jnp.asarray(prior_cov, dtype=float)
-    R0 = jnp.atleast_2d(jnp.asarray(noise_cov, dtype=float))
+    S = jnp.asarray(prior_cov, dtype=float); R0 = jnp.atleast_2d(jnp.asarray(noise_cov, dtype=float))
     mu0 = jnp.asarray(prior_mean, dtype=float).reshape(-1)
     tau, s = float(prior_scale_init), float(noise_scale_init)
     history = []
-    z_map = np.asarray(mu0)
-    for _ in range(int(iterations)):
-        z_map, _ = map_estimate(
-            model, x, y, mu0, tau * S, s * R0, z_init=z_map)
+    z_map = None if z_init is None else np.asarray(z_init, dtype=float).reshape(-1)
+    for it in range(int(iterations)):
+        # the first search starts from the prior mean (and z_init); later ones continue from the
+        # current MAP, since a change of scale moves the optimum only a little
+        z_map, _ = map_estimate(model, x, y, mu0, tau * S, s * R0, z_init=z_map, from_prior_mean=(it == 0))
         z_lin = jnp.asarray(z_map)
 
         def objective(theta):
-            t = jnp.exp(theta[0])
-            sc = jnp.exp(theta[1]) if fit_noise else s
+            t = jnp.exp(theta[0]); sc = jnp.exp(theta[1]) if fit_noise else s
             return -log_marginal_likelihood(model, z_lin, x, y, mu0, t * S, sc * R0)
 
         obj = jax.jit(jax.value_and_grad(objective))
-        theta0 = np.array([np.log(tau), np.log(s)]
-                          if fit_noise else [np.log(tau), 0.0])
+        theta0 = np.array([np.log(tau), np.log(s)] if fit_noise else [np.log(tau), 0.0])
         bounds = [LOG_SCALE_BOUNDS] * (2 if fit_noise else 1)
 
         def fun(th):
-            v, g = obj(jnp.asarray(np.concatenate(
-                [th, [0.0]]) if not fit_noise else th))
+            v, g = obj(jnp.asarray(np.concatenate([th, [0.0]]) if not fit_noise else th))
             g = np.asarray(g)[: len(th)]
             return float(v), g
-        res = minimize(fun, theta0[: len(bounds)],
-                       jac=True, method="L-BFGS-B", bounds=bounds)
+        res = minimize(fun, theta0[: len(bounds)], jac=True, method="L-BFGS-B", bounds=bounds)
         tau = float(np.exp(res.x[0]))
         if fit_noise:
             s = float(np.exp(res.x[1]))
         history.append((tau, s, -float(res.fun)))
-    z_map, cov = map_estimate(model, x, y, mu0, tau * S, s * R0, z_init=z_map)
-    lml = float(log_marginal_likelihood(
-        model, z_map, x, y, mu0, tau * S, s * R0))
+    z_map, cov = map_estimate(model, x, y, mu0, tau * S, s * R0, z_init=z_map, from_prior_mean=False)
+    lml = float(log_marginal_likelihood(model, z_map, x, y, mu0, tau * S, s * R0))
     return EmpiricalBayesResult(mean=jnp.asarray(z_map).reshape(-1, 1), cov=jnp.asarray((cov + cov.T) / 2),
                                 prior_cov=tau * S, noise_cov=s * R0, prior_scale=tau, noise_scale=s,
                                 log_marginal_likelihood=lml, history=history)

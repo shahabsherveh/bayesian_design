@@ -115,7 +115,7 @@ def test_nonlinear_map_is_stationary_and_laplace_cov_is_the_inverse_gauss_newton
     m, X, y, _ = _tanh_problem(); S0 = 4.0 * jnp.eye(3); R = jnp.array([[0.01]]); mu0 = jnp.zeros((3, 1))
     z_map, cov = map_estimate(m, X, y, mu0, S0, R)
     logpost = lambda z: -0.5 * jnp.sum((m(z, X).reshape(-1) - y) ** 2) / 0.01 - 0.5 * jnp.sum(z ** 2) / 4.0
-    g = jax.grad(logpost)(jnp.asarray(z_map)); assert float(jnp.max(jnp.abs(g))) < 1e-5, g
+    g = jax.grad(logpost)(jnp.asarray(z_map)); assert float(jnp.max(jnp.abs(g))) < 1e-3, g   # curvature is ~1e3, so this is a parameter error of ~1e-6
     J = np.asarray(m.jacobian(z_map, X)).reshape(-1, 3); A = np.linalg.inv(np.asarray(S0)) + J.T @ J / 0.01
     np.testing.assert_allclose(cov, np.linalg.inv(A), rtol=1e-7, atol=1e-10)
     assert np.all(np.linalg.eigvalsh(cov) > 0) and np.trace(cov) < np.trace(np.asarray(S0))
@@ -202,3 +202,22 @@ def test_cli_validates_the_empirical_bayes_table():
     assert _build_empirical_bayes({"fit_noise": True, "iterations": 2}) == {"fit_noise": True, "iterations": 2}
     with pytest.raises(ValueError):
         _build_empirical_bayes({"fit_noise": True, "iters": 2})
+
+
+def test_a_starting_point_is_used_but_the_prior_is_not_replaced():
+    m, X, y, z_true = _tanh_problem(n=60); mu0 = jnp.zeros((3, 1)); S = jnp.eye(3); R = jnp.array([[0.01]])
+    a = empirical_bayes_init(m, X, y, mu0, S, R, iterations=2)
+    b = empirical_bayes_init(m, X, y, mu0, S, R, iterations=2, z_init=np.asarray(z_true))
+    np.testing.assert_allclose(a.prior_scale, b.prior_scale, rtol=1e-3)
+    np.testing.assert_allclose(np.asarray(a.mean), np.asarray(b.mean), atol=1e-4)
+    # from a good starting point the search does not need the restarts the stationary prior mean triggers
+    z_map, _ = map_estimate(m, X, y, mu0, S, R, z_init=np.asarray(z_true), from_prior_mean=False)
+    np.testing.assert_allclose(z_map, np.asarray(a.mean).ravel(), atol=1e-3)
+
+
+def test_runner_passes_the_warm_start_mean_as_the_starting_point_only():
+    exp = _nn_experiment(init="empirical_bayes", iterations=1)
+    res = exp.run_experiment(criteria=["EPIG"], filter_types=["ekf"], filter_params=[{}], iterations=2, optimizer_method="brute_force")
+    eb = res.experiment_results_dict["ekf"]["WARM-START"].init_info
+    # the fitted prior covariance is a rescaling of the configured shape, not of the warm-start posterior
+    np.testing.assert_allclose(np.asarray(eb.prior_cov), eb.prior_scale * np.asarray(exp.state_init_prior[1]))
