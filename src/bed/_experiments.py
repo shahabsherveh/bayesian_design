@@ -658,7 +658,8 @@ class Experiment:
                 idx = jnp.asarray(warm.selected_indices, dtype=int)
                 eb = empirical_bayes_init(
                     self.model, self.data.x_train[idx], self.data.y_train[idx],
-                    prior_mean=filter_instance.state_prior[0], prior_cov=filter_instance.state_prior[1],
+                    prior_mean=self.state_init_prior[0], prior_cov=self.state_init_prior[1],
+                    z_init=filter_instance.state_prior[0],
                     noise_cov=self.measurement_error, **self.empirical_bayes_kwargs,
                 )
                 # The warm-start observations are used once, inside the Laplace belief; the
