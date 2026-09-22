@@ -51,4 +51,4 @@ seed = 0
 strategies = ["EPIG", "EIG"]
 iterations = 100
 optimizer_method = "brute_force"
-warm_start = 5
+warm_start = 20
