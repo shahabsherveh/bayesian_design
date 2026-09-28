@@ -218,11 +218,11 @@ class Experiment:
             This implementation is incomplete - it samples but doesn't compute
             the mutual information. Use calculate_epig() for a working implementation.
         """
-        mean_1 = jax.vmap(lambda theta: self.model(
-            theta.T, x_1))(latent_samples)
-        mean_0 = jax.vmap(lambda theta: self.model(theta.T, x_0))(
-            latent_samples
-        ).swapaxes(1, 2)
+        mean_1 = jnp.expand_dims(jax.vmap(lambda theta: self.model(
+            theta.T, x_1))(latent_samples), axis=2)
+        mean_0 = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x_0))(
+            latent_samples), axis=1
+        )
         epsilon_1 = mean_1 - y_1
         epsilon_0 = mean_0 - y_0
 
@@ -261,25 +261,24 @@ class Experiment:
         outcome_latent_samples = multivariate_normal(
             mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
         ).rvs(size=M, random_state=self._rng)
-        y_0_samples = jax.vmap(lambda theta: self.model(theta.T, x))(
+        y_0_samples = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x))(
             outcome_latent_samples
-        )[None, ...].squeeze(-1)
+        ), axis=0)
         noise_0 = self._rng.normal(
             loc=0,
             scale=np.sqrt(self.measurement_error),
             size=y_0_samples.shape,
         )
         y_0_samples += noise_0
-        y_1_samples = jax.vmap(lambda theta: self.model(theta.T, x_1))(
-            outcome_latent_samples
-        )
+        y_1_samples = jnp.expand_dims(jax.vmap(lambda theta, x: self.model(theta.T, x))(
+            outcome_latent_samples, x_1
+        ), axis=[0, 2])
         noise_1 = self._rng.normal(
             loc=0,
             scale=np.sqrt(self.measurement_error),
             size=y_1_samples.shape,
         )
         y_1_samples += noise_1
-        y_1_samples = y_1_samples.diagonal().T.swapaxes(0, 1)[..., None]
 
         latent_samples = multivariate_normal(
             mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
