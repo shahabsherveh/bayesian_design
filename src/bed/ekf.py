@@ -285,13 +285,15 @@ class EKF:
         # Note 50: posterior-to-prior volume ratio.
         state_prior_mean = self.state_prior[0]
         state_prior_cov = self.state_prior[1]
-        measurement_error = self.measurement_error
+        R = jnp.atleast_2d(jnp.asarray(self.measurement_error))
 
         H = self.model.jacobian(state_prior_mean.reshape(-1, 1), x)
         H_T = H.T if H.ndim == 2 else H.swapaxes(1, 2)
 
-        eig = jnp.log((H @ state_prior_cov @ H_T / measurement_error) + 1) / 2
-        return jnp.atleast_1d(eig.squeeze())
+        S = H @ state_prior_cov @ H_T + R
+        # EIG = 1/2 log det S - 1/2 log det R (matrix determinant lemma), valid for any d_y
+        eig = 0.5 * (jnp.linalg.slogdet(S).logabsdet - jnp.linalg.slogdet(R).logabsdet)
+        return jnp.atleast_1d(eig.reshape(-1))
 
     def calculate_epig(self, x, x_1):
         """Compute linearized EPIG for candidate and prediction designs.
