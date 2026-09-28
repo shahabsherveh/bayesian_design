@@ -265,8 +265,36 @@ class Experiment:
             x = x[None, ...]
         if x_1 is None:
             x_1 = self.design_pool
+<<<<<<< HEAD
         M, B, K = x_1.shape[0], x.shape[0], num_latent_samples
         R = jnp.atleast_2d(jnp.asarray(self.measurement_error))
+=======
+        M = x_1.shape[0]
+        N = x.shape[0]
+        K = num_latent_samples
+        state_mean, state_cov = filtr.state_prior
+        outcome_latent_samples = multivariate_normal(
+            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
+        ).rvs(size=M, random_state=self._rng)
+        y_0_samples = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x))(
+            outcome_latent_samples
+        ), axis=0)
+        noise_0 = self._rng.normal(
+            loc=0,
+            scale=np.sqrt(self.measurement_error),
+            size=y_0_samples.shape,
+        )
+        y_0_samples += noise_0
+        y_1_samples = jnp.expand_dims(jax.vmap(lambda theta, x: self.model(theta.T, x))(
+            outcome_latent_samples, x_1
+        ), axis=[0, 2])
+        noise_1 = self._rng.normal(
+            loc=0,
+            scale=np.sqrt(self.measurement_error),
+            size=y_1_samples.shape,
+        )
+        y_1_samples += noise_1
+>>>>>>> 538fd2e (Improves MC method code)
 
         # diagonal observation noise
         r = jnp.diagonal(R)
