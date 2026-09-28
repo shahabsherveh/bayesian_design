@@ -7,3 +7,12 @@ build/
 paper.pdf
 .env
 SKILL.md
+
+# Experimental output. Raw shards are large (the sufficiency campaign alone is 115 MB) and are
+# regenerable: every result file records in its manifest the commit and the cluster snapshot that
+# produced it. Summaries and figures are small and are kept, because they are what a reader needs.
+results/*/raw/
+results/**/raw/
+
+# macOS directory metadata
+.DS_Store
