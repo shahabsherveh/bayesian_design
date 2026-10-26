@@ -121,17 +121,12 @@ class UKF:
 
     def get_state_posterior(self, measurement, x):
         """Update the state using an unscented measurement transform."""
-        measurement = jnp.asarray(measurement).reshape(-1)
-        mean_meas, S_x, P_x = (
-            self._measurement_statistics(x)
-        )
-        gain = (
-            P_x) @ jnp.linalg.inv(S_x
-                                  )
-        mean = self.state_prior[0] + \
-            jnp.squeeze(gain @ (measurement - mean_meas))
-        covariance = jnp.squeeze(
-            self.state_prior[1] - gain @ S_x @ jnp.matrix_transpose(gain))
+        measurement = jnp.asarray(measurement).reshape(1, -1)
+        mean_meas, S_x, P_x = self._measurement_statistics(x)      # (1, d_y), (1, d_y, d_y), (1, n, d_y)
+        gain = P_x @ jnp.linalg.inv(S_x)                          # (1, n, d_y)
+        innovation = (measurement - mean_meas)[..., None]         # (1, d_y, 1)
+        mean = jnp.asarray(self.state_prior[0]).reshape(-1) + (gain @ innovation).reshape(-1)
+        covariance = (self.state_prior[1] - gain @ S_x @ jnp.matrix_transpose(gain))[0]
         covariance = (covariance + covariance.T) / 2
         return mean, covariance
 

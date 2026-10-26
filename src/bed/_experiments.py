@@ -53,6 +53,7 @@ class Experiment:
         seed: int = 0,
         init: str = "filter",
         empirical_bayes_kwargs=None,
+        latent_mean=None,
     ):
         """
         Initialize sequential experimental design framework.
@@ -95,6 +96,7 @@ class Experiment:
         self.state_init_prior = self.build_prior(
             latent_cov=latent_cov,
             model=model,
+            latent_mean=latent_mean,
         )
         self.data = data
         self.design_pool, self.design_space, self.true_measurements = self.build_design_space(
@@ -124,6 +126,7 @@ class Experiment:
     def build_prior(
         latent_cov,
         model: NeuralNetworkRegressor,
+        latent_mean=None,
     ):
         """
         Construct initial prior distribution over latent parameters.
@@ -139,6 +142,11 @@ class Experiment:
                 - mean: Zero vector of shape (latent_dim, 1)
                 - cov: Diagonal covariance matrix of shape (latent_dim, latent_dim)
         """
+        if latent_mean is not None:
+            return jnp.asarray(latent_mean).reshape(-1, 1), latent_cov
+        if not hasattr(model, "flax_model"):
+            raise TypeError(
+                "latent_mean is required for models without Flax parameters.")
         model_state = nnx.state(model.flax_model)
         mean = model.flax_model.state_to_weights(model_state)
         # mean = np.zeros((latent_dim, 1))
@@ -244,7 +252,7 @@ class Experiment:
         """Draw parameter samples from the filter's Gaussian belief with the runner's generator."""
         state_mean, state_cov = filtr.state_prior
         return jnp.asarray(multivariate_normal(
-            mean=jnp.asarray(state_mean).flatten(), cov=jnp.asarray(state_cov)
+            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
         ).rvs(size=size, random_state=self._rng)).reshape(size, -1)
 
     def calculate_epig_mc(self, x, filtr, x_1=None, num_latent_samples=1000, **kwargs):
@@ -257,8 +265,37 @@ class Experiment:
             x = x[None, ...]
         if x_1 is None:
             x_1 = self.design_pool
+<<<<<<< HEAD
         M, B, K = x_1.shape[0], x.shape[0], num_latent_samples
         R = jnp.atleast_2d(jnp.asarray(self.measurement_error))
+=======
+        M = x_1.shape[0]
+        N = x.shape[0]
+        K = num_latent_samples
+        state_mean, state_cov = filtr.state_prior
+        outcome_latent_samples = multivariate_normal(
+            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
+        ).rvs(size=M, random_state=self._rng)
+        y_0_samples = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x))(
+            outcome_latent_samples
+        ), axis=0)
+        noise_0 = self._rng.normal(
+            loc=0,
+            scale=np.sqrt(self.measurement_error),
+            size=y_0_samples.shape,
+        )
+        y_0_samples += noise_0
+        y_1_samples = jnp.expand_dims(jax.vmap(lambda theta, x: self.model(theta.T, x))(
+            outcome_latent_samples, x_1
+        ), axis=[0, 2])
+        noise_1 = self._rng.normal(
+            loc=0,
+            scale=np.sqrt(self.measurement_error),
+            size=y_1_samples.shape,
+        )
+        y_1_samples += noise_1
+>>>>>>> 538fd2e (Improves MC method code)
+
         # diagonal observation noise
         r = jnp.diagonal(R)
         d_y = r.size
@@ -272,7 +309,8 @@ class Experiment:
         # pair pool point j with theta_j: (M, d_y)
         f_out_x1 = f_out_x1[jnp.arange(M), jnp.arange(M)]
         y_0 = f_out_x + jnp.sqrt(r) * \
-            jnp.asarray(self._rng.normal(size=(M, B, d_y)))
+            jnp.asarray(
+            self._rng.normal(size=(M, B, d_y)))
         y_1 = f_out_x1 + jnp.sqrt(r) * \
             jnp.asarray(self._rng.normal(size=(M, d_y)))
         f_in_x = jax.vmap(lambda th: self.model(th, x))(
@@ -486,6 +524,8 @@ class Experiment:
         crit_values = []
         sd_values_test_pool = []
         rmse_values_test_pool = []
+        rmse_outputs_test_pool = []
+        rmse_outputs_test_glob = []
         sd_values_test_glob = []
         rmse_values_test_glob = []
         filters = []
@@ -539,6 +579,10 @@ class Experiment:
             crit_values.append(crit_value)
             rmse_values_test_glob.append(rmse_predictions_glob)
             rmse_values_test_pool.append(rmse_predictions_pool)
+            rmse_outputs_test_pool.append(self.calculate_rmse_per_output(
+                mean_test_pool, self.data.y_test_pool))
+            rmse_outputs_test_glob.append(self.calculate_rmse_per_output(
+                mean_test_glob, self.data.y_test_glob))
             sd_values_test_glob.append(sd_glob)
             sd_values_test_pool.append(sd_pool)
         return ExperimentResults(
@@ -554,6 +598,8 @@ class Experiment:
             filter_type=filter_type,
             filters=filters,
             selected_indices=selected_indices,
+            rmse_pool_outputs=rmse_outputs_test_pool,
+            rmse_glob_outputs=rmse_outputs_test_glob,
         )
 
     def calculate_rmse(self, cov):
@@ -568,6 +614,13 @@ class Experiment:
         """
         rmse_pred = (jnp.linalg.trace(cov)**.5).mean()
         return rmse_pred
+
+    def calculate_rmse_per_output(self, predictions, true_measurements):
+        """RMSE over the design points, separately for each output dimension (shape ``(d_y,)``)."""
+        n = jnp.asarray(true_measurements).shape[0]
+        pred = jnp.asarray(predictions).reshape(n, -1)
+        true = jnp.asarray(true_measurements).reshape(n, -1)
+        return jnp.sqrt(jnp.mean((pred - true) ** 2, axis=0))
 
     def calculate_rmse_params(self, estimate_mean, latent_true):
         """
@@ -725,6 +778,8 @@ class ExperimentResults:
         design_space=None,
         filters=[],
         selected_indices=None,
+        rmse_pool_outputs=None,
+        rmse_glob_outputs=None,
     ):
         """Initialize metric histories and selected designs.
 
@@ -749,6 +804,10 @@ class ExperimentResults:
         self.data = data
         self.selected_indices = [] if selected_indices is None else list(
             selected_indices)
+        self.rmse_pool_outputs = [] if rmse_pool_outputs is None else list(
+            rmse_pool_outputs)
+        self.rmse_glob_outputs = [] if rmse_glob_outputs is None else list(
+            rmse_glob_outputs)
         # EmpiricalBayesResult when the warm start was followed by empirical Bayes
         self.init_info = None
 
