@@ -240,58 +240,59 @@ class Experiment:
         )
         return jnp.where(~jnp.isnan(mi), mi, -jnp.inf)
 
+    def _sample_latent(self, filtr, size):
+        """Draw parameter samples from the filter's Gaussian belief with the runner's generator."""
+        state_mean, state_cov = filtr.state_prior
+        return jnp.asarray(multivariate_normal(
+            mean=jnp.asarray(state_mean).flatten(), cov=jnp.asarray(state_cov)
+        ).rvs(size=size, random_state=self._rng)).reshape(size, -1)
+
     def calculate_epig_mc(self, x, filtr, x_1=None, num_latent_samples=1000, **kwargs):
-        """
-        Calculate EPIG using Monte Carlo sampling (incomplete implementation).
-        Intended to compute EPIG by sampling from the joint distribution of
-        latent parameters and measurements, avoiding linearization approximations.
-        Args:
-            x: Proposed observation design
-            latent_samples: Number of samples for latent parameters
-            design_samples: Number of samples for prediction designs
-        """
-        if x.ndim == 1:
-            x = x[:, None]
+        """Nested Monte Carlo estimate of EPIG (Bickford Smith et al., 2023) for any output
+        dimension with a diagonal observation covariance: one outer sample (theta_j, y_j, y'_j)
+        per pool point, ``num_latent_samples`` inner samples for the marginal and joint densities,
+        log-sum-exp throughout. Strongly biased downward for small inner sample sizes in more than
+        one output dimension; see tests/mechanistic_test.py for its convergence check."""
+        if x.ndim == 3:
+            x = x[None, ...]
         if x_1 is None:
             x_1 = self.design_pool
-        M = x_1.shape[0]
-        N = x.shape[0]
-        K = num_latent_samples
-        state_mean, state_cov = filtr.state_prior
-        outcome_latent_samples = multivariate_normal(
-            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
-        ).rvs(size=M, random_state=self._rng)
-        y_0_samples = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x))(
-            outcome_latent_samples
-        ), axis=0)
-        noise_0 = self._rng.normal(
-            loc=0,
-            scale=np.sqrt(self.measurement_error),
-            size=y_0_samples.shape,
-        )
-        y_0_samples += noise_0
-        y_1_samples = jnp.expand_dims(jax.vmap(lambda theta, x: self.model(theta.T, x))(
-            outcome_latent_samples, x_1
-        ), axis=[0, 2])
-        noise_1 = self._rng.normal(
-            loc=0,
-            scale=np.sqrt(self.measurement_error),
-            size=y_1_samples.shape,
-        )
-        y_1_samples += noise_1
-
-        latent_samples = multivariate_normal(
-            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
-        ).rvs(size=K, random_state=self._rng)
-        mi = self.calculate_mutual_information_mc(
-            y_1_samples,
-            x_1,
-            y_0_samples,
-            x,
-            latent_samples=latent_samples,
-        )
-        # return mi.mean(where=~jnp.isnan(mi) & ~jnp.isinf(mi), axis=0).squeeze()
-        return jnp.atleast_1d(mi.mean(axis=0).squeeze())
+        M, B, K = x_1.shape[0], x.shape[0], num_latent_samples
+        R = jnp.atleast_2d(jnp.asarray(self.measurement_error))
+        # diagonal observation noise
+        r = jnp.diagonal(R)
+        d_y = r.size
+        # one outer sample (theta_j, y_j, y'_j) per pool point, K inner samples for the densities
+        theta_outer = self._sample_latent(filtr, M)
+        theta_inner = self._sample_latent(filtr, K)
+        f_out_x = jax.vmap(lambda th: self.model(th, x))(
+            theta_outer).reshape(M, B, d_y)
+        f_out_x1 = jax.vmap(lambda th: self.model(th, x_1))(
+            theta_outer).reshape(M, M, d_y)
+        # pair pool point j with theta_j: (M, d_y)
+        f_out_x1 = f_out_x1[jnp.arange(M), jnp.arange(M)]
+        y_0 = f_out_x + jnp.sqrt(r) * \
+            jnp.asarray(self._rng.normal(size=(M, B, d_y)))
+        y_1 = f_out_x1 + jnp.sqrt(r) * \
+            jnp.asarray(self._rng.normal(size=(M, d_y)))
+        f_in_x = jax.vmap(lambda th: self.model(th, x))(
+            theta_inner).reshape(K, B, d_y)
+        f_in_x1 = jax.vmap(lambda th: self.model(th, x_1))(
+            theta_inner).reshape(K, M, d_y)
+        # (K, M, B)
+        logp_0 = -0.5 * \
+            jnp.sum((y_0[None] - f_in_x[:, None]) ** 2 / r, axis=-1)
+        # (K, M, 1)
+        logp_1 = -0.5 * jnp.sum((y_1[None] - f_in_x1)
+                                ** 2 / r, axis=-1)[..., None]
+        log_k = jnp.log(K)
+        log_joint = jax.scipy.special.logsumexp(
+            logp_0 + logp_1, axis=0) - log_k
+        log_marg_0 = jax.scipy.special.logsumexp(logp_0, axis=0) - log_k
+        log_marg_1 = jax.scipy.special.logsumexp(logp_1, axis=0) - log_k
+        # (M, B)
+        mi = log_joint - log_marg_0 - log_marg_1
+        return jnp.atleast_1d(mi.mean(axis=0))
 
     def calculate_eig(self, x, filtr, *arg, **kwargs):
         """
