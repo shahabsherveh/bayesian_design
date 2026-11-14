@@ -116,10 +116,31 @@ Ordered by impact on the ability of an outside reader to trust or reproduce resu
    commits in the history (Shahab Sherveh and Jens Sjölund, 21 commits).
 
 9. ~~**No CI.**~~ **Fixed.** `.github/workflows/tests.yml` runs on push to `main`, on pull
-   requests, and on manual dispatch: Python 3.12, CPU-only JAX, a ruff lint gate, then
-   `pytest tests/ -q -n auto`. Verified locally against the exact commands (lint exit 0,
-   suite exit 0), and the lint gate was confirmed to exit 1 on a deliberate violation.
-   Not yet observed running on GitHub's runners.
+   requests, and on manual dispatch. It has two jobs so that a lint failure reports in
+   seconds rather than waiting behind the five-minute suite:
+   - **`lint`** — installs only ruff and ty, then runs `ruff check src/ tests/ experiments/`
+     and `ty check src/ --exit-zero-on-warning`. Takes about a second locally.
+   - **`test`** — Python 3.12, CPU-only JAX, `pytest tests/ -q -n auto`.
+
+   Verified locally against the exact commands (both exits 0), and each gate was confirmed
+   to exit 1 on a deliberate violation. Not yet observed running on GitHub's runners.
+
+14. **The fast gates also run in a pre-commit hook.** `.pre-commit-config.yaml` runs the same
+    ruff and ty checks before every commit, which is a better place for them than CI: they
+    take under a second combined, while the test suite takes about five minutes even
+    parallelised and is deliberately left to CI.
+
+    Install once per clone: `python -m pip install pre-commit && pre-commit install`.
+    `pre-commit` is in `requirements.txt`, so `pip install -e .` already provides it.
+
+    `ruff` and `ty` were previously missing from `requirements.txt` (CI pip-installed ruff
+    inline and ty was only present as a global binary), so a fresh clone could not run
+    either check. Both are now declared, which is also what lets the hook and CI use the
+    same versions as each other.
+
+    Verified the hook blocks a commit: staging a file with an undefined name fails both
+    hooks and `git commit` exits 1 with no commit created. `pre-commit run --all-files`
+    passes on the current tree.
 
 11. ~~**`matplotlib` is an undeclared dependency.**~~ **Fixed.** Declared in
     `requirements.txt`, alongside `pytest-xdist`. A clean install now resolves the four
@@ -255,13 +276,16 @@ The suite now runs non-interactively with plain `pytest tests/`; the
 3. ~~Recover or rewrite `PROGRESS.md` and commit it.~~ Resolved by stripping the dangling
    references instead; see issue 1 for what that costs.
 4. Add wrappers for configs 4 and 5, or drop them.
-5. ~~Add `LICENSE` (MIT) and a GitHub Actions workflow.~~ Done; the workflow gates on lint
-   and tests.
-6. ~~Declare or guard `matplotlib` in `requirements.txt`.~~ Done, with `pytest-xdist`.
-7. Decide whether `results/` summaries should be tracked; if so, commit them, otherwise
+5. ~~Add `LICENSE` (MIT) and a GitHub Actions workflow.~~ Done; the workflow splits a fast
+   `lint` job (ruff + ty) from the `test` job.
+6. ~~Declare or guard `matplotlib` in `requirements.txt`.~~ Done, along with `pytest-xdist`,
+   `pre-commit`, `ruff` and `ty`.
+7. ~~Run the lint gates before commit rather than only in CI.~~ Done via
+   `.pre-commit-config.yaml`; see issue 14.
+8. Decide whether `results/` summaries should be tracked; if so, commit them, otherwise
    adjust the `.gitignore` comment so it does not claim they are kept.
-8. Optionally enable the stylistic ruff rules (`E5`, `E7`, `I`, `UP`) after a deliberate
+9. Optionally enable the stylistic ruff rules (`E5`, `E7`, `I`, `UP`) after a deliberate
    `ruff format` pass. Not done here because it rewrites most of the analysis code.
-9. Optionally do a typing pass on `src/` to clear the 70 `ty` warnings, then flip the gate to
-   `--error-on-warning`. The main items are annotating `self.model` on the `ISResult`/`Posterior`
-   paths and declaring the attributes set after construction.
+10. Optionally do a typing pass on `src/` to clear the 70 `ty` warnings, then flip the gate
+    to `--error-on-warning`. The main items are annotating `self.model` on the
+    `ISResult`/`Posterior` paths and declaring the attributes set after construction.

@@ -6,6 +6,9 @@ matplotlib
 jupyter
 pytest
 pytest-xdist
+pre-commit
+ruff
+ty
 ipdb
 cvxpy
 jax

@@ -7,6 +7,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Fast gates. These also run locally before every commit via .pre-commit-config.yaml,
+  # so this job is a backstop for commits made with --no-verify and for pull requests
+  # from contributors who have not installed the hook.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install the lint tooling
+        # Only ruff and ty, not the full scientific stack: this job should finish in
+        # seconds. Both are pinned in requirements.txt, and the same versions are used
+        # by the pre-commit hook.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff ty
+
+      - name: ruff
+        run: ruff check src/ tests/ experiments/
+
+      - name: ty
+        # src/ only: tests/ and experiments/ import sibling scripts via sys.path and
+        # carry Optional-narrowing patterns ty cannot follow. --exit-zero-on-warning
+        # means only error-level diagnostics fail the job; the pre-existing warnings
+        # do not.
+        run: ty check src/ --exit-zero-on-warning
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -33,20 +66,6 @@ jobs:
 
       - name: Show the resolved environment
         run: python -m pip list
-
-      - name: Lint with ruff
-        run: |
-          python -m pip install ruff
-          ruff check src/ tests/ experiments/
-
-      - name: Type check with ty
-        run: |
-          python -m pip install ty
-          # src/ only: tests/ and experiments/ import sibling scripts via sys.path and
-          # carry Optional-narrowing patterns ty cannot follow, which is not worth
-          # annotating away. --exit-zero-on-warning means only error-level diagnostics
-          # fail the job; the 70 pre-existing warnings do not.
-          ty check src/ --exit-zero-on-warning
 
       - name: Run the test suite
         env:

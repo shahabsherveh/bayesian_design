@@ -1,0 +1,32 @@
+# Fast checks that run before every commit. The full test suite is deliberately not
+# here: it takes about 5 minutes even with -n auto, which is too slow to sit in front of
+# a commit. CI runs it on push instead (see .github/workflows/tests.yml).
+#
+# Install once per clone:
+#   python -m pip install pre-commit && pre-commit install
+#
+# Run manually against everything:
+#   pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.5
+    hooks:
+      - id: ruff-check
+        # The rule set lives in pyproject.toml; no --fix here, so a commit cannot
+        # silently rewrite the working tree.
+        args: []
+        files: ^(src|tests|experiments)/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty check src/
+        # ty is installed with the project (see requirements.txt), so this runs the
+        # same version as CI rather than whatever happens to be on PATH.
+        entry: ty check src/ --exit-zero-on-warning
+        language: system
+        types: [python]
+        # ty needs the whole src/ tree to resolve cross-module imports, so it is run as
+        # a project-wide check rather than per-file.
+        pass_filenames: false
+        files: ^src/.*\.py$
