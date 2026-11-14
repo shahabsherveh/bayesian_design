@@ -16,3 +16,7 @@ results/**/raw/
 
 # macOS directory metadata
 .DS_Store
+
+# Local tooling output
+.pi/
+graphify-out/
