@@ -5,8 +5,6 @@ The implementation is kept behind ``bed._models`` for now so existing
 import by model family.
 """
 
-from scipy.stats import multivariate_normal
-
 from bed._models import (
     CNN,
     GP,
@@ -43,5 +41,4 @@ __all__ = [
     "Sinus",
     "SinusInverse",
     "generate_full_design_matrix",
-    "multivariate_normal",
 ]
