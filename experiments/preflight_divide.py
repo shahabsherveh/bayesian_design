@@ -1,4 +1,4 @@
-"""Pre-flight for candidate D (PROGRESS.md, gates G1-G4): the data-free linearised greedy forecast
+"""Pre-flight for candidate D (gates G1-G4): the data-free linearised greedy forecast
 of the biomarker-variance ratios EPIG/EIG and EPIG/random at N = 30 (G1), the closed-form vs
 MC-moment check at the prior (G2), the prior-predictive monotonicity fraction (G3) and where each
 criterion allocates acquisitions (G4). Targets are the three standardised biomarkers with zero noise.

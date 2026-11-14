@@ -2,7 +2,7 @@
 In the linear-Gaussian approximation the posterior covariance does not depend on the observed values,
 so the whole sequential design and its predictive variance at the pool are computable from the
 Jacobians alone. Reports, after each step, the ratio of the pool predictive variance (noise-free,
-per output) under EPIG-greedy, EIG-greedy and random designs. Calibrated on A (PROGRESS.md A-5: the
+per output) under EPIG-greedy, EIG-greedy and random designs. Calibrated on A (A-5: the
 exact posterior predictive-variance ratio EPIG/EIG was 0.75 on E and 0.90 on log C at budget 15).
 
 Usage: python experiments/linearized_greedy.py pkpd [--budget 15]   (the DIVIDE forecast lives in preflight_divide.py)
@@ -100,7 +100,7 @@ def run(p, budget=15, seeds=10, warm_start=3, label=""):
 
 
 if __name__ == "__main__":
-    # The PK/PD forecast, calibrated against the measured outcome (PROGRESS.md A-5/B-3). The DIVIDE
+    # The PK/PD forecast, calibrated against the measured outcome (A-5/B-3). The DIVIDE
     # forecast, with noise-free biomarker targets and repeats, is run by experiments/preflight_divide.py.
     ap = argparse.ArgumentParser(); ap.add_argument("problem", choices=["pkpd"]); ap.add_argument("--budget", type=int, default=15)
     a = ap.parse_args()

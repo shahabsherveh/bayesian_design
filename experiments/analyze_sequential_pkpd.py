@@ -1,5 +1,5 @@
-"""Aggregate a `sequential_pkpd.py` results file against the registered predictions (PROGRESS.md
-A-2): paired win counts and median ratios at the final step and along the budget, per filter and
+"""Aggregate a `sequential_pkpd.py` results file against the registered predictions (A-2):
+paired win counts and median ratios at the final step and along the budget, per filter and
 output; a learning-curve figure with interquartile bands. Numbers are printed and written to
 `<results>_summary.json`; the figure goes next to it as a PDF.
 

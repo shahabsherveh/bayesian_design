@@ -1,4 +1,4 @@
-"""Candidate D sequential experiment (PROGRESS.md, D plan): DIVIDE biomarker protocol design.
+"""Candidate D sequential experiment (D plan): DIVIDE biomarker protocol design.
 
 Five arms share a warm start: EPIG (adaptive, closed form on the three standardised biomarkers with
 zero target noise), EIG (adaptive, all parameters), RANDOM, FIXED-EPIG and FIXED-EIG (the protocol

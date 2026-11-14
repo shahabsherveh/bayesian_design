@@ -1,4 +1,4 @@
-"""Does the sequential EKF's distorted covariance (PROGRESS.md A-4: predictive sd at the pool 3x too
+"""Does the sequential EKF's distorted covariance (A-4: predictive sd at the pool 3x too
 wide on log C after 15 updates, marginals fine, so the correlations are wrong) cost the criterion
 anything? Five arms share a warm start: EPIG and EIG scored from the sequential EKF belief (as the
 runner does), EPIG and EIG scored from a Laplace belief refitted on all data after every

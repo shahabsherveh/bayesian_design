@@ -1,4 +1,4 @@
-"""Aggregate `sequential_divide.py` output against the registered predictions S1-S5 (PROGRESS.md D-2):
+"""Aggregate `sequential_divide.py` output against the registered predictions S1-S5 (D-2):
 expected-loss ratios with paired bootstrap CIs (summed and per biomarker, three estimators), fixed vs
 adaptive, calibration, estimator agreement, allocations.
 

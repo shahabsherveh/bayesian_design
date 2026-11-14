@@ -1,5 +1,5 @@
-"""Aggregate the sharded outputs of `falsify_pkpd.py` and `laplace_refit_pkpd.py` (PROGRESS.md
-A-4). Reports, for each output, the ratio of mean pool MSE over draws with a paired bootstrap CI
+"""Aggregate the sharded outputs of `falsify_pkpd.py` and `laplace_refit_pkpd.py` (A-4).
+Reports, for each output, the ratio of mean pool MSE over draws with a paired bootstrap CI
 (the Bayes-risk comparison), win rates, the exact posterior predictive variance at the pool, and
 for the Laplace-refit runs the three registered predictions P1-P3.
 

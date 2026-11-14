@@ -1,6 +1,5 @@
-"""Candidate A sequential experiment (PROGRESS.md Phase 2): synthetic PK/PD, truth drawn from the
+"""Candidate A sequential experiment (Phase 2): synthetic PK/PD, truth drawn from the
 prior, 3 random warm-start samples, budget 15, EKF and UKF(alpha=1), criteria EPIG / EIG / RANDOM.
-Predictions registered in PROGRESS.md before the first run.
 
 Usage: python experiments/sequential_pkpd.py [--draws 10] [--budget 15] [--prior-scale 1.0] [--out results/sequential_pkpd.json]
 """

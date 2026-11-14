@@ -1,4 +1,4 @@
-"""Adversarial checks on candidate A (PROGRESS.md A-3). Reruns the EKF sequential experiment on
+"""Adversarial checks on candidate A (A-3). Reruns the EKF sequential experiment on
 the first N draws and, on the same selected data sets, replaces the runner's plug-in EKF mean by
 (i) the MAP estimate under the Gaussian prior and (ii) the posterior predictive mean by importance
 sampling from a Laplace proposal. If EPIG beats EIG under (i)/(ii) but not under the EKF mean, the

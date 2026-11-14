@@ -1,4 +1,4 @@
-"""Level 0 instruments (PROGRESS.md, H0.2, H0.3) and Level 1 regression (H1.1)."""
+"""Level 0 instruments (H0.2, H0.3) and Level 1 regression (H1.1)."""
 import jax
 import jax.numpy as jnp
 import numpy as np

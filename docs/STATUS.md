@@ -16,9 +16,9 @@ is plausible and well structured; the code is organized around a layered public 
 private implementation modules, and it has no import cycles. The test suite passes
 (138 passed, 3 skipped) after two release-blocking defects found and fixed during this
 review — the package did not import at all, and Monte Carlo EPIG crashed for multi-output
-models. The dominant remaining risk is **reproducibility**: the experiment layer and one
-test file are organized around a planning document (`PROGRESS.md`) that does not exist
-anywhere in the repository or its history.
+models. The investigation layer's outputs are exploratory rather than confirmatory, because
+the planning document its registered predictions lived in was never committed; the dangling
+references to it have since been removed (see issue 1).
 
 ## What is in place
 
@@ -58,13 +58,21 @@ layer writes versioned manifests and uses atomic, idempotent result writes
 
 Ordered by impact on the ability of an outside reader to trust or reproduce results.
 
-1. **`PROGRESS.md` is missing but load-bearing.** 11 files reference it, including
-   `tests/diagnostics_test.py` and every script in the investigation layer. It defines
-   hypotheses (H0.2, H0.3, H1.1), pre-flight gates (G1–G4), registered predictions, and
-   candidates A/D. It was **never committed on any branch** (`git log --all` is empty for
-   it), so it was kept outside version control. As a result: pre-registered predictions
-   cannot be checked against reality, "calibrated against PROGRESS.md A-5" comments are
-   unverifiable, and a reader cannot tell what was predicted before a run versus after.
+1. ~~**`PROGRESS.md` is missing but load-bearing.**~~ **Resolved by removing the references.**
+   11 files referenced it, including `tests/diagnostics_test.py` and every script in the
+   investigation layer, citing hypotheses (H0.2, H0.3, H1.1), pre-flight gates (G1–G4),
+   registered predictions, and candidates A/D. It was never committed on any branch
+   (`git log --all` is empty for it, and it was never added-then-deleted), so the references
+   were dangling. The dangling identifiers were stripped and the surrounding technical
+   content kept; the scripts still carry their labels (A-2, A-4, D-2, S1–S5, P1–P3,
+   G1–G4, H0.2/H0.3/H1.1) but no longer point at a document that does not exist.
+
+   **Consequence for readers:** the investigation layer's outputs can no longer be
+   presented as pre-registered. Whatever predictions were written down elsewhere, nothing in
+   this repository establishes that they predate the runs, so results from
+   `sequential_pkpd.py`, `sequential_divide.py` and their analysis scripts should be read as
+   exploratory, not confirmatory. If the original document is ever recovered, commit it
+   unchanged with its original dates to restore that property.
 
 2. **No environment in this workspace can run the suite.** `.venv/` exists but is
    empty (0 entries in `site-packages`, no `pip`). Neither `numpy` nor `pytest` is
@@ -185,9 +193,8 @@ The suite now runs non-interactively with plain `pytest tests/`; the
 
 1. ~~Provision the environment and record a baseline.~~ Done: 138 passed, 3 skipped.
 2. ~~Move `--pdb` out of `addopts`; drop the module-scope `import ipdb`.~~ Done.
-3. Recover or rewrite `PROGRESS.md` and commit it. If the pre-registered predictions
-   still exist somewhere outside git, commit them unchanged with their original dates so
-   the prediction/proof ordering stays auditable.
+3. ~~Recover or rewrite `PROGRESS.md` and commit it.~~ Resolved by stripping the dangling
+   references instead; see issue 1 for what that costs.
 4. Add wrappers for configs 4 and 5, or drop them.
 5. ~~Add `LICENSE` (MIT).~~ Done. Remaining: add a minimal GitHub Actions workflow running
    the suite; it can now rely on pytest's exit code.

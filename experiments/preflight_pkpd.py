@@ -1,4 +1,4 @@
-"""Pre-flight gate for candidate A (PROGRESS.md, Phase 2): at the prior,
+"""Pre-flight gate for candidate A (Phase 2): at the prior,
 (1) Spearman(EPIG, EIG) over the candidates -- must be < 0.9 for EPIG to offer anything;
 (2) Spearman(closed-form EPIG, Gaussian EPIG from MC moments of the same belief) -- must be > 0.9.
 Also reports the singular-value spectra of the target and design Jacobians and where EPIG's argmax lies."""
