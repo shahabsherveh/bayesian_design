@@ -14,6 +14,7 @@ from functools import partial
 
 import cvxpy as cp
 import jax.numpy as jnp
+
 # import matplotlib.pyplot as plt
 import numpy as np
 import optax
@@ -885,7 +886,6 @@ class Model:
         Note:
             This is a placeholder. Subclasses can implement training logic if needed.
         """
-        pass
 
     def __call__(self, z, x, **kwargs):
         """

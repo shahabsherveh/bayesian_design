@@ -10,8 +10,7 @@ from bed.quadrature import enable_double_precision
 assert enable_double_precision()
 
 from bed import reference as ref  # noqa: E402
-from bed.quadrature import (ModeQuadrature, gauss_hermite, _laplace_modes,  # noqa: E402
-                            mode_starts)
+from bed.quadrature import ModeQuadrature, _laplace_modes, gauss_hermite, mode_starts  # noqa: E402
 
 
 class LinearModel:
@@ -217,6 +216,7 @@ def test_predictive_normalisation_is_reported_not_hidden():
     pytest.importorskip("suff_common",
                         reason="needs experiments/suff, which ships separately from the library")
     from suff_common import CONFIGS, make_problem
+
     from bed.quadrature import expected_posterior_variance
 
     p = make_problem(CONFIGS["source_v2"], 50000)

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import typer
+
 # import matplotlib.pyplot as plt
-
 from bed.data import get_1d_regression, get_uci_data
-
 
 app = typer.Typer()
 CONFIG_DIR = Path(__file__).resolve().parents[3] / "experiments" / "configs"
@@ -32,6 +32,7 @@ def _build_model(model_cfg: dict):
     """Construct the configured NNX model and measurement wrapper."""
     import jax
     from flax import nnx
+
     from bed.models import CNN, DenseNN, LinearNN, NeuralNetworkClassifier, NeuralNetworkRegressor
     model_type = model_cfg["type"]
     seed = model_cfg.get("seed", 0)
@@ -213,8 +214,9 @@ def run_experiment_from_config(
 ):
     """Run one configured experiment, or return a dry-run summary."""
     import jax
-    from jax import numpy as jnp
     from flax import nnx
+    from jax import numpy as jnp
+
     from bed.experiments import Experiment
     cfg = _load_config(config)
     jax.config.update("jax_enable_x64", cfg.get(

@@ -5,16 +5,29 @@ criterion allocates acquisitions (G4). Targets are the three standardised biomar
 
 Usage: python experiments/preflight_divide.py [--voxels 1] [--budget 27] [--warm 3] [--seeds 20]
 """
-import argparse, json, sys
+import argparse
+import json
+import sys
 from pathlib import Path
-import jax, jax.numpy as jnp, numpy as np
+
+import jax
+import jax.numpy as jnp
+import numpy as np
 from scipy.stats import spearmanr
+
 jax.config.update("jax_enable_x64", True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from linearized_greedy import greedy, jacobians
-from bed.mechanistic import DIVIDE_BIOMARKERS, DIVIDE_PRIOR_MEAN, DIVIDE_PRIOR_SD, divide_biomarkers, make_divide_problem
+
 from bed.diagnostics import gaussian_epig, mc_moments
 from bed.ekf import EKF
+from bed.mechanistic import (
+    DIVIDE_BIOMARKERS,
+    DIVIDE_PRIOR_MEAN,
+    DIVIDE_PRIOR_SD,
+    divide_biomarkers,
+    make_divide_problem,
+)
 
 ap = argparse.ArgumentParser(); ap.add_argument("--voxels", type=int, default=1); ap.add_argument("--budget", type=int, default=27); ap.add_argument("--warm", type=int, default=3); ap.add_argument("--seeds", type=int, default=20); ap.add_argument("--snr", type=float, default=40.0)
 a = ap.parse_args(); out = {}
@@ -52,7 +65,7 @@ for k in (5, 10, 20, a.budget):
 # G4: allocation
 def alloc(sel):
     c = cand[sel]; te_extra = c[:, 2] - np.asarray([float(v) for v in __import__("bed.mechanistic", fromlist=["divide_te_min"]).divide_te_min(jnp.asarray(c[:, 0]), jnp.asarray(c[:, 1]))])
-    return {"share_TE_above_min": float(np.mean(te_extra > 1)), "share_b0": float(np.mean(c[:, 0] < 0.05)), "share_spherical_b>=1.5": float(np.mean((c[:, 1] == 0) & (c[:, 0] >= 1.5))), "share_linear_b>=1.5": float(np.mean((c[:, 1] == 1) & (c[:, 0] >= 1.5))), "median_b": float(np.median(c[:, 0])), "distinct": int(len(set(sel.tolist())))}
+    return {"share_TE_above_min": float(np.mean(te_extra > 1)), "share_b0": float(np.mean(c[:, 0] < 0.05)), "share_spherical_b>=1.5": float(np.mean((c[:, 1] == 0) & (c[:, 0] >= 1.5))), "share_linear_b>=1.5": float(np.mean((c[:, 1] == 1) & (c[:, 0] >= 1.5))), "median_b": float(np.median(c[:, 0])), "distinct": len(set(sel.tolist()))}
 out["G4"] = {c: alloc(sels[c]) for c in ("epig", "eig")}
 for c in ("epig", "eig"): print(f"  G4 {c.upper()} allocation: {out['G4'][c]}")
 Path("results").mkdir(exist_ok=True); json.dump(out, open(f"results/preflight_divide_V{a.voxels}_snr{int(a.snr)}.json", "w"), indent=1); print(f"wrote results/preflight_divide_V{a.voxels}_snr{int(a.snr)}.json")

@@ -23,7 +23,6 @@ from bed import gaussian_design as gd
 from bed import reference as ref
 from bed.mechanistic import divide_biomarkers, make_divide_problem, make_pkpd_problem
 
-
 # ---------------------------------------------------------------------------------------------
 # problems
 # ---------------------------------------------------------------------------------------------

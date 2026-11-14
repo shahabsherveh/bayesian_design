@@ -59,9 +59,10 @@ def test_gaussian_epig_from_filter_moments_matches_the_filters_own_criterion():
 
 
 def test_h02_monte_carlo_epig_bias_shrinks_with_the_inner_sample_size():
+    from copy import deepcopy
+
     from bed.data import create_synthetic_data
     from bed.experiments import Experiment
-    from copy import deepcopy
     flax_model = DenseNN(input_dim=2, hidden_dims=[], output_dim=1, rngs=nnx.Rngs(0))
     truth = deepcopy(flax_model)
     data = create_synthetic_data(truth, num_train=20, num_test=6, input_dim=2, embedding_dim=1,

@@ -1,17 +1,19 @@
 import argparse
-from numpy.random import normal
-from tqdm import trange
-from bed.data import create_synthetic_data
-from bed.models import LinearNN, NeuralNetworkRegressor
-from bed.experiments import Experiment
-from bed.ekf import EKF
+import timeit
+from copy import deepcopy
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from flax import nnx
-from copy import deepcopy
-import timeit
+from numpy.random import normal
 from tabulate import tabulate
+from tqdm import trange
+
+from bed.data import create_synthetic_data
+from bed.ekf import EKF
+from bed.experiments import Experiment
+from bed.models import LinearNN, NeuralNetworkRegressor
 
 parser = argparse.ArgumentParser(
     prog="Bayesian Active Learning",

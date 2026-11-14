@@ -9,11 +9,17 @@ against the sampled posterior predictive sd), and the importance-sampling effect
 
 Usage: python experiments/falsify_pkpd.py [--draws 60] [--budget 15] [--samples 40000]
 """
-import argparse, json, time
-import jax, jax.numpy as jnp, numpy as np
+import argparse
+import json
+import time
+from copy import deepcopy
+
+import jax
+import jax.numpy as jnp
+import numpy as np
 from scipy.optimize import least_squares
 from scipy.stats import multivariate_t
-from copy import deepcopy
+
 jax.config.update("jax_enable_x64", True)
 from bed.experiments import Experiment
 from bed.mechanistic import make_pkpd_problem

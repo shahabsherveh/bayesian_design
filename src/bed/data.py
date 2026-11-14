@@ -1,8 +1,8 @@
 """Data containers and dataset-generation utilities for Bayesian design."""
 
-from jax import numpy as jnp
 import jax
 import numpy as np
+from jax import numpy as jnp
 from scipy import stats
 
 from bed.models import FlaxModel
@@ -465,10 +465,10 @@ def get_uci_data(
 ):
     """Load a UCI dataset and split its test set into pool and global subsets."""
     # fetch dataset
-    from ucimlrepo import fetch_ucirepo
+    from sklearn.decomposition import PCA
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import StandardScaler
-    from sklearn.decomposition import PCA
+    from ucimlrepo import fetch_ucirepo
     uci_data = fetch_ucirepo(dataset)
 
     x = uci_data.data.features

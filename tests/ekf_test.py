@@ -1,5 +1,5 @@
-from flax import nnx
 import jax.numpy as jnp
+from flax import nnx
 
 from bed.ekf import EKF
 from bed.models import LinearNN, NeuralNetworkRegressor

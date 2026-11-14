@@ -5,8 +5,10 @@ output; a learning-curve figure with interquartile bands. Numbers are printed an
 
 Usage: python experiments/analyze_sequential_pkpd.py [results/sequential_pkpd_100.json]
 """
-import json, sys
+import json
+import sys
 from pathlib import Path
+
 import numpy as np
 
 path = Path(sys.argv[1] if len(sys.argv) > 1 else "results/sequential_pkpd_100.json")
@@ -67,7 +69,7 @@ for c in ("EPIG", "EIG"):
     print(f" {c} selected times, bins {bins}: {(h / h.sum() * 100).round(0).astype(int).tolist()} %   share at 400 mg {np.mean(dose[c] == 400)*100:.0f}%")
 json.dump(summary, open(path.with_name(path.stem + "_summary.json"), "w"), indent=1)
 
-import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt  # noqa: E702, I001 — the backend must be set before pyplot is imported
 COL = {"EPIG": "#1b9e77", "EIG": "#d95f02", "RANDOM": "#7570b3"}
 fig, axes = plt.subplots(2, 2, figsize=(6.5, 4.6), sharex=True)
 for i, f in enumerate(("ekf", "ukf")):

@@ -5,7 +5,10 @@ for the Laplace-refit runs the three registered predictions P1-P3.
 
 Usage: python experiments/analyze_falsify_pkpd.py "results/pelle/falsify_300_s*.json" "results/pelle/laplace_refit_s*.json"
 """
-import glob, json, sys
+import glob
+import json
+import sys
+
 import numpy as np
 
 rng = np.random.default_rng(0)

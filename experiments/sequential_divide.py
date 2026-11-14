@@ -13,14 +13,22 @@ criterion and the MAP/IS are done per voxel (voxels are independent given the sh
 
 Usage: python experiments/sequential_divide.py [--draws 100] [--voxels 1] [--budget 27] [--warm 3] [--samples 20000] [--out results/sequential_divide_V1.json]
 """
-import argparse, json, sys, time
+import argparse
+import json
+import sys
+import time
 from pathlib import Path
-import jax, jax.numpy as jnp, numpy as np
+
+import jax
+import jax.numpy as jnp
+import numpy as np
 from scipy.optimize import least_squares
 from scipy.stats import multivariate_t
+
 jax.config.update("jax_enable_x64", True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from linearized_greedy import epig_scores, eig_scores, greedy, greedy_averaged
+from linearized_greedy import eig_scores, epig_scores, greedy, greedy_averaged
+
 from bed.mechanistic import DivideModel, divide_biomarkers, make_divide_problem
 
 ARMS = ("EPIG", "EIG", "RANDOM", "FIXED-EPIG", "FIXED-EIG", "FIXED-EPIG-B", "FIXED-EIG-B")

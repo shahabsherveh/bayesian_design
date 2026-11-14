@@ -1,15 +1,17 @@
 from copy import deepcopy
-from flax import nnx
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+from flax import nnx
 from scipy.stats import multivariate_normal
 from tqdm import tqdm
+
+from .data import Data
 from .ekf import EKF
 from .empirical_bayes import empirical_bayes_init
-from .ukf import UKF
 from .models import NeuralNetworkRegressor
-from .data import Data
+from .ukf import UKF
 
 
 class Experiment:

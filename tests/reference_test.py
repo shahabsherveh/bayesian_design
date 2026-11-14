@@ -3,7 +3,8 @@ sampling diagnostics, repeat agreement, and the MCMC cross-check on a nonlinear 
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.stats import multivariate_normal, t as student_t
+from scipy.stats import multivariate_normal
+from scipy.stats import t as student_t
 
 from bed import reference as ref
 from bed.mechanistic import ClosedFormModel, DivideModel, make_divide_problem

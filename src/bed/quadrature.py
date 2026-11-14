@@ -298,7 +298,8 @@ def expected_posterior_variance(quad, problem, cands, n_y=64, targets=None, n_cl
     mg = w @ G
     V_now = float(np.sum(w @ (G ** 2) - mg ** 2))
 
-    import jax, jax.numpy as jnp
+    import jax
+    import jax.numpy as jnp
     Xc = jnp.asarray(np.asarray(problem.X)[np.asarray(cands, int)])
     if int(problem.dy) != 1:
         raise NotImplementedError("observation integration is written for scalar observations")

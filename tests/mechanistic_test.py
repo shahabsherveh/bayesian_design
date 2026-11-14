@@ -7,7 +7,7 @@ from flax import nnx
 from bed.data import create_synthetic_data
 from bed.ekf import EKF
 from bed.experiments import Experiment
-from bed.mechanistic import PKPDModel, STEADY_STATE_DOSES, make_pkpd_problem
+from bed.mechanistic import STEADY_STATE_DOSES, PKPDModel, make_pkpd_problem
 from bed.models import DenseNN, NeuralNetworkRegressor
 from bed.ukf import UKF
 

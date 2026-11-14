@@ -36,16 +36,20 @@ addopts = "-s"
 line-length = 120
 
 [tool.ruff.lint]
-# Correctness only. This is a research codebase written in a deliberately dense style
-# (compact statements, long lines, semicolons), so the stylistic rule sets are left off
-# rather than mass-reformatting 2000+ lines of analysis code. Enforce what would be a bug.
+# Correctness, plus the mechanical cleanups that carry no behaviour change. This is a research
+# codebase written in a deliberately dense style (compact statements, long lines, semicolons),
+# so the heavy stylistic rule sets stay off rather than mass-reformatting the analysis code.
 select = [
-  "E4",   # duplicate names in imports
-  "E7",   # statement-level mistakes (redefinition, comparison abuse)
-  "E9",   # syntax/runtime errors
-  "F",    # pyflakes: unused imports/variables, undefined names
-  "W6",   # invalid escape sequences
-  "PLE",  # pylint: errors only
+  "E4",     # duplicate names in imports
+  "E7",     # statement-level mistakes (redefinition, comparison abuse)
+  "E9",     # syntax/runtime errors
+  "F",      # pyflakes: unused imports/variables, undefined names
+  "W6",     # invalid escape sequences
+  "PLE",    # pylint: errors only
+  "PIE790", # redundant pass
+  "RUF046", # redundant int() around a length
+  "RUF022", # unsorted __all__
+  "I001",   # unsorted / unsplit imports
 ]
 ignore = [
   "E401",  # multiple imports on one line — compact style used throughout

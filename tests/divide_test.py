@@ -3,8 +3,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bed.mechanistic import (DIVIDE_PRIOR_MEAN, DIVIDE_PRIOR_SD, DivideModel, divide_biomarkers, divide_te_min,
-                             make_divide_problem)
+from bed.mechanistic import (
+    DIVIDE_PRIOR_MEAN,
+    DIVIDE_PRIOR_SD,
+    DivideModel,
+    divide_biomarkers,
+    divide_te_min,
+    make_divide_problem,
+)
 
 jax.config.update("jax_enable_x64", True)
 

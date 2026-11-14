@@ -1,7 +1,8 @@
-import jax.numpy as jnp
-from bed.models import DenseNN, LinearModel, NNFLax, NeuralNetworkRegressor
 import jax
+import jax.numpy as jnp
 from flax import nnx
+
+from bed.models import DenseNN, LinearModel, NeuralNetworkRegressor, NNFLax
 
 
 class TestLinearModel:

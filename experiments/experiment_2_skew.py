@@ -1,13 +1,13 @@
-from bed.data import (
-    create_synthetic_skewnormal_mixture_data_1D,
-)
-from bed.models import DenseNN, NeuralNetworkRegressor, Sinus
-from bed.experiments import Experiment
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from flax import nnx
 
+from bed.data import (
+    create_synthetic_skewnormal_mixture_data_1D,
+)
+from bed.experiments import Experiment
+from bed.models import DenseNN, NeuralNetworkRegressor, Sinus
 
 jax.config.update("jax_enable_x64", True)
 hidden_dim_0 = 16

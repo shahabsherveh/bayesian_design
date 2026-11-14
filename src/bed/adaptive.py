@@ -128,7 +128,7 @@ class AdaptiveQuadrature:
         self.mass_log = float(mx + np.log(w.sum()))
         self.w = w / w.sum()
         self.n_nodes = int(nodes.shape[0])
-        self.n_cells = int(len(leaves))
+        self.n_cells = len(leaves)
         self.ess = float(1.0 / np.sum(self.w ** 2))
         self.max_node_weight = float(self.w.max())
 

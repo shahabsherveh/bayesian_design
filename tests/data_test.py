@@ -1,8 +1,10 @@
 import os
 import tempfile
-import numpy as np
+
 import jax.numpy as jnp
+import numpy as np
 import pytest
+
 from bed.data import (
     Data,
     create_synthetic_data,

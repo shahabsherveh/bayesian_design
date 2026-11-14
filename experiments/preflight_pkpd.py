@@ -4,12 +4,16 @@
 Also reports the singular-value spectra of the target and design Jacobians and where EPIG's argmax lies."""
 import json
 from pathlib import Path
-import jax, jax.numpy as jnp, numpy as np
+
+import jax
+import jax.numpy as jnp
+import numpy as np
 from scipy.stats import spearmanr
+
 jax.config.update("jax_enable_x64", True)
 from bed.diagnostics import filter_moments, gaussian_epig, mc_moments
 from bed.ekf import EKF
-from bed.mechanistic import make_pkpd_problem, PKPD_NAMES
+from bed.mechanistic import PKPD_NAMES, make_pkpd_problem
 from bed.ukf import UKF
 
 out = {}

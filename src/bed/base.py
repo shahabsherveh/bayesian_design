@@ -15,7 +15,7 @@ class Experiment:
     Subclasses should implement methods for computing likelihoods and simulating
     experimental outcomes.
     """
-    
+
     def likelihood(self, params, data, design):
         """
         Compute the likelihood of observed data given parameters and design.
@@ -62,7 +62,7 @@ class BayesianExperimentalDesign:
         model: An Experiment instance defining the forward model
         prior: Prior distribution over model parameters
     """
-    
+
     def __init__(self, model: Experiment, prior):
         """
         Initialize Bayesian experimental design.

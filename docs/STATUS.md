@@ -126,18 +126,35 @@ Ordered by impact on the ability of an outside reader to trust or reproduce resu
     tests that previously failed with `ModuleNotFoundError`.
 
 12. **Linting was absent; now gated, with a deliberately narrow rule set.** `pyproject.toml`
-    had no `[tool.ruff]` section, so nothing was checked. A ruff gate was added with
-    `select = [E4, E7, E9, F, W6, PLE]` — correctness rules only. The stylistic rules are
-    ignored on purpose: the codebase yields 1418 `E501` (line-too-long) and 528 `E702`
-    (semicolon) violations, i.e. it has never been formatted by a tool and uses a dense
-    research style. Enforcing those would mean rewriting ~2000 lines of analysis code and
-    would bury real defects under noise. Turning the stylistic rules on would be a separate,
-    deliberate reformatting decision.
+    had no `[tool.ruff]` section, so nothing was checked. A ruff gate was added selecting
+    correctness rules (`E4`, `E7`, `E9`, `F`, `W6`, `PLE`) plus the mechanical cleanups that
+    carry no behaviour change (`I001`, `RUF022`, `PIE790`, `RUF046`). The stylistic rules are
+    ignored on purpose: even at the configured `line-length = 120` the codebase yields 290
+    `E501` (line-too-long) and 528 `E702` (semicolon) violations — 1415 `E501` at ruff's
+    default width — i.e. it has never been formatted by a tool and uses a dense
+    research style. Enforcing those would mean rewriting the analysis code and would bury
+    real defects under noise. Turning them on would be a separate, deliberate reformatting
+    decision.
 
-    The initial `F` sweep removed 40 dead imports and 5 unused variables. All were verified
-    non-behavioural: no `__init__.py` re-exports and no side-effect imports were touched, the
-    three unused variables that ruff marks unsafe were reviewed by hand rather than
-    auto-fixed, and the full suite was re-run after each directory (138 passed, 3 skipped).
+    Applied so far: 40 dead imports and 5 unused variables, then 62 more mechanical fixes
+    (import splitting, `__all__` ordering, redundant `int()`/`pass`). All were verified
+    non-behavioural: no `__init__` re-exports or side-effect imports were touched, the three
+    unused variables ruff classes as unsafe to autofix (`adaptive.py` `ksum`, `ekf.py`
+    `H_pred_T`, `stats.py` `n`) were reviewed by hand, and the full suite was re-run after
+    each stage (138 passed, 3 skipped).
+
+    Two rules are deliberately **not** enforced:
+    - `W293` (blank line contains whitespace). The remaining 24 hits are all inside
+      docstrings, where ruff classifies the fix as unsafe because it changes the literal.
+      Not worth rewriting docstring bytes for invisible characters.
+    - The `--unsafe-fixes` set (`SIM115`, `B905`, `B007`, `RUF059`, 24 remaining). These
+      change runtime behaviour — `zip(strict=True)` raises on a length mismatch, for
+      instance — so they need review rather than a blanket `--fix`.
+
+    Two `noqa` comments were added where fixing would have broken something:
+    `analyze_sequential_pkpd.py` sets `matplotlib.use("Agg")` before importing pyplot, and
+    `laplace_refit_pkpd.py` imports after a `sys.path` insert. Both are order-dependent;
+    the backend was verified to still resolve to `Agg`.
 
 ## Verified state
 

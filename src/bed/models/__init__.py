@@ -5,11 +5,13 @@ The implementation is kept behind ``bed._models`` for now so existing
 import by model family.
 """
 
+from scipy.stats import multivariate_normal
+
 from bed._models import (
     CNN,
+    GP,
     DenseNN,
     FlaxModel,
-    GP,
     GaussianProcessModel,
     LinearGaussianModel,
     LinearModel,
@@ -23,22 +25,21 @@ from bed._models import (
     SinusInverse,
     generate_full_design_matrix,
 )
-from scipy.stats import multivariate_normal
 
 __all__ = [
     "CNN",
+    "GP",
     "DenseNN",
     "FlaxModel",
-    "GP",
     "GaussianProcessModel",
     "LinearGaussianModel",
     "LinearModel",
     "LinearNN",
     "Model",
+    "NNFLax",
     "NeuralNetworkBase",
     "NeuralNetworkClassifier",
     "NeuralNetworkRegressor",
-    "NNFLax",
     "Sinus",
     "SinusInverse",
     "generate_full_design_matrix",

@@ -8,7 +8,10 @@ exact posterior predictive-variance ratio EPIG/EIG was 0.75 on E and 0.90 on log
 Usage: python experiments/linearized_greedy.py pkpd [--budget 15]   (the DIVIDE forecast lives in preflight_divide.py)
 """
 import argparse
-import jax, numpy as np
+
+import jax
+import numpy as np
+
 jax.config.update("jax_enable_x64", True)
 from bed import mechanistic as M
 

@@ -1,14 +1,14 @@
 """Unscented Kalman filtering for nonlinear measurement models."""
 
-from os import environ
 import warnings
+from os import environ
 
-from flax.nnx import Rngs
 import jax
-from scipy.stats import multivariate_normal
 import jax.numpy as jnp
+from flax.nnx import Rngs
+from scipy.stats import multivariate_normal
 
-from bed._models import DenseNN, NeuralNetworkRegressor, Model
+from bed._models import DenseNN, Model, NeuralNetworkRegressor
 
 
 class UKF:

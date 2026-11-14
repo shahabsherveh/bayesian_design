@@ -4,8 +4,11 @@ adaptive, calibration, estimator agreement, allocations.
 
 Usage: python experiments/analyze_divide.py results/sequential_divide_V1.json [results/sequential_divide_V16.json]
 """
-import json, sys
+import json
+import sys
+
 import numpy as np
+
 rng = np.random.default_rng(0)
 BIO = ("MD", "MK_I", "MK_A")
 
@@ -34,8 +37,9 @@ for f in sys.argv[1:]:
     V = {a: np.array([x[a]["post_var"] for x in rows]) for a in ARMS}
     print(" posterior-variance ratios per biomarker (forecast said EPIG/EIG 0.76, 0.96, 0.73): EPIG/EIG " + " ".join(f"{V['EPIG'][:, k].mean() / V['EIG'][:, k].mean():.2f}" for k in range(3)) + " ; EPIG/RAND " + " ".join(f"{V['EPIG'][:, k].mean() / V['RANDOM'][:, k].mean():.2f}" for k in range(3)))
     # allocation
-    from bed.mechanistic import make_divide_problem, divide_te_min
     import jax.numpy as jnp
+
+    from bed.mechanistic import divide_te_min, make_divide_problem
     p = make_divide_problem(seed=0, num_voxels=1); cand = np.asarray(p.candidates)
     for a in [a for a in ("EPIG", "EIG", "FIXED-EPIG", "FIXED-EIG") if a in ARMS]:
         sel = np.concatenate([x[a]["selected"] for x in rows]); c = cand[sel]

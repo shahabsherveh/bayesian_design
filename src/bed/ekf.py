@@ -9,10 +9,11 @@
 # Note 7: The methods below also compute predictive distributions and
 # Note 8: information criteria, which are used to rank candidate experiments.
 
-from .models import Model
-from scipy.stats import multivariate_normal
 import jax.numpy as jnp
 import numpy as np
+from scipy.stats import multivariate_normal
+
+from .models import Model
 
 
 class EKF:

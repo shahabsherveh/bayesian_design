@@ -21,7 +21,6 @@ from itertools import combinations, combinations_with_replacement
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------------------------
 # covariance algebra
 # ---------------------------------------------------------------------------------------------

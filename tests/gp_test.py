@@ -1,10 +1,11 @@
+import numpy as np
+from sklearn.gaussian_process.kernels import RBF
+
 from bed.models import (
     GaussianProcessModel,
     generate_full_design_matrix,
     multivariate_normal,
 )
-from sklearn.gaussian_process.kernels import RBF
-import numpy as np
 
 
 class TestGaussianProcessModel:

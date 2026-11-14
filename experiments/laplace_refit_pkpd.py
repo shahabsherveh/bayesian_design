@@ -14,13 +14,21 @@ Predictions registered before running (2026-09-18):
 
 Usage: python experiments/laplace_refit_pkpd.py [--draws 60] [--budget 15] [--samples 20000]
 """
-import argparse, json, sys, time
+import argparse
+import json
+import sys
+import time
 from pathlib import Path
-import jax, jax.numpy as jnp, numpy as np
+
+import jax
+import jax.numpy as jnp
+import numpy as np
+
 jax.config.update("jax_enable_x64", True)
 from bed.ekf import EKF
 from bed.mechanistic import make_pkpd_problem
-sys.path.insert(0, str(Path(__file__).resolve().parent)); from falsify_pkpd import fit_map, posterior_predictive
+
+sys.path.insert(0, str(Path(__file__).resolve().parent)); from falsify_pkpd import fit_map, posterior_predictive  # noqa: E402, I001 — must follow the sys.path insert
 
 ARMS = ("EPIG-EKF", "EIG-EKF", "EPIG-LAP", "EIG-LAP", "RANDOM")
 

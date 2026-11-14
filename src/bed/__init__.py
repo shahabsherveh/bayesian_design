@@ -7,9 +7,9 @@ from .ekf import EKF
 from .experiments import Experiment, ExperimentResults, MultiExperimentResults
 from .models import (
     CNN,
+    GP,
     DenseNN,
     FlaxModel,
-    GP,
     GaussianProcessModel,
     LinearGaussianModel,
     LinearModel,
@@ -21,29 +21,29 @@ from .models import (
     SinusInverse,
     generate_full_design_matrix,
 )
+
 #
 __version__ = "0.0.1"
 __author__ = "Shahab Sherveh"
 
 __all__ = [
-    "LinearGaussianModel",
-    "GP",
-    "GaussianProcessModel",
+    "CNN",
     "EKF",
-    "generate_full_design_matrix",
+    "GP",
     "BayesianExperimentalDesign",
+    "DenseNN",
     "Experiment",
     "ExperimentResults",
-    "MultiExperimentResults",
-    "EKF",
-    "Model",
-    "LinearModel",
     "FlaxModel",
+    "GaussianProcessModel",
+    "LinearGaussianModel",
+    "LinearModel",
     "LinearNN",
-    "DenseNN",
-    "CNN",
-    "NeuralNetworkRegressor",
+    "Model",
+    "MultiExperimentResults",
     "NeuralNetworkClassifier",
+    "NeuralNetworkRegressor",
     "Sinus",
     "SinusInverse",
+    "generate_full_design_matrix",
 ]

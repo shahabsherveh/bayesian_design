@@ -17,6 +17,7 @@ def test_ekf_greedy_epig_reproduces_the_paper_script_on_divide():
     the new loop must select the same designs and end at the same EKF mean."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "experiments"))
     from sequential_divide import run_arm
+
     from bed.mechanistic import make_divide_problem
     d, budget, warm_start = 2, 6, 3
     p_old = make_divide_problem(seed=100 + d, num_voxels=1, snr=40.0); rng = np.random.default_rng(d)
@@ -35,8 +36,9 @@ def test_ekf_greedy_epig_reproduces_the_paper_script_on_divide():
 
 
 def test_laplace_belief_is_exact_on_a_linear_model_and_ekf_equals_it_there():
-    from bed.mechanistic import ClosedFormModel
     import jax.numpy as jnp
+
+    from bed.mechanistic import ClosedFormModel
 
     class Lin(ClosedFormModel):
         output_dim = 1; weight_size = 3

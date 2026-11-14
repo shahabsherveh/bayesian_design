@@ -3,9 +3,13 @@ prior, 3 random warm-start samples, budget 15, EKF and UKF(alpha=1), criteria EP
 
 Usage: python experiments/sequential_pkpd.py [--draws 10] [--budget 15] [--prior-scale 1.0] [--out results/sequential_pkpd.json]
 """
-import argparse, json, time
+import argparse
+import json
+import time
 from pathlib import Path
+
 import jax
+
 jax.config.update("jax_enable_x64", True)
 from bed.experiments import Experiment
 from bed.mechanistic import make_pkpd_problem
