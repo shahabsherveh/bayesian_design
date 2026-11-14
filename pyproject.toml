@@ -29,5 +29,5 @@ dependencies = { file = "requirements.txt" }
 testpaths = [
   "tests"
 ]
-addopts ="--pdb --pdbcls=IPython.terminal.debugger:TerminalPdb -s"
+addopts = "-s"
 
