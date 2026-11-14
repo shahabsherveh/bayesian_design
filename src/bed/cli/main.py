@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from pathlib import Path
 import typer
 # import matplotlib.pyplot as plt
@@ -32,7 +31,6 @@ def _load_config(config: str) -> dict:
 def _build_model(model_cfg: dict):
     """Construct the configured NNX model and measurement wrapper."""
     import jax
-    import jax.numpy as jnp
     from flax import nnx
     from bed.models import CNN, DenseNN, LinearNN, NeuralNetworkClassifier, NeuralNetworkRegressor
     model_type = model_cfg["type"]
@@ -115,7 +113,6 @@ def _build_data(data_cfg: dict, model_cfg: dict | None = None, truth_cfg: dict |
     """
     import jax
     import jax.numpy as jnp
-    from flax import nnx
 
     from bed.data import (
         create_synthetic_data,

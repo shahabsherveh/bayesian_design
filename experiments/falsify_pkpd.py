@@ -88,7 +88,7 @@ def main(draws, budget, num_samples, warm_start=3, start=0):
                 row[c]["ekf_mahal_map"] = float(np.sqrt(dz @ np.linalg.solve(S, dz)))
                 _, cov_pool = filt.measurement_prior(p.data.x_test_pool)
                 row[c]["ekf_pred_sd"] = [float(v) for v in np.sqrt(np.mean(np.diagonal(np.asarray(cov_pool).reshape(-1, 2, 2), axis1=1, axis2=2), axis=0))]
-            except Exception as e:
+            except Exception:
                 row[c]["ekf_mahal_map"] = None
         out.append(row)
         e, i = row["EPIG"], row["EIG"]

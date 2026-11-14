@@ -20,7 +20,7 @@ def cluster_bootstrap(stat, arrays, clusters, n_boot=4000, seed=0, alpha=0.05):
     """``stat(*resampled_arrays) -> float`` evaluated on ``n_boot`` cluster-bootstrap replicates of
     the row arrays ``arrays`` (all of length ``n``) with cluster labels ``clusters``; returns
     ``[point, lower, upper]`` with the point estimate on the full data and percentile limits."""
-    arrays = [np.asarray(a) for a in arrays]; n = arrays[0].shape[0]
+    arrays = [np.asarray(a) for a in arrays]
     order, starts, counts = _groups(clusters); C = counts.size; rng = np.random.default_rng(seed)
     point = float(stat(*arrays)); reps = np.empty(n_boot)
     for b in range(n_boot):

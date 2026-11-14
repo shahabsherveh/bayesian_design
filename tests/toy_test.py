@@ -1,6 +1,5 @@
 """The exact small-instance instrument: policy orderings that must hold by construction, the
 linear-Gaussian anchor (no value of adaptation), and outcome-integration convergence."""
-import numpy as np
 
 from bed import toy
 
@@ -20,7 +19,7 @@ def test_linear_gaussian_grid_has_no_value_of_adaptation():
     m = toy.linear_model(G=241, ny=121)
     r = m.evaluate_all(2, "loss")
     # exact: posterior variance after designs x1, x2 is (1/s² + (x1² + x2²)/σ²)^{-1}; the best pair is the two largest |x|
-    s2, sig2 = 1.0, 0.3 ** 2; xs = np.linspace(-2, 2, 5)
+    s2, sig2 = 1.0, 0.3 ** 2
     exact = 1.0 / (1 / s2 + (2 * 4.0) / sig2)
     assert abs(r["fixed_best"] - exact) < 2e-3 * exact
     assert abs(r["value_of_adaptation"]) < 2e-3 * exact and abs(r["value_of_lookahead"]) < 2e-3 * exact

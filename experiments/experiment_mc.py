@@ -1,7 +1,6 @@
 #!.venv/bin/python
 from tqdm import trange
 from bed.data import create_synthetic_data
-from bed.ekf import EKF
 from bed.models import LinearNN, NeuralNetworkRegressor
 from bed.experiments import Experiment
 import jax
@@ -9,7 +8,6 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from flax import nnx
 from copy import deepcopy
-import matplotlib.pyplot as plt
 
 from bed.ukf import UKF
 

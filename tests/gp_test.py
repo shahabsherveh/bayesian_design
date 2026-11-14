@@ -3,7 +3,7 @@ from bed.models import (
     generate_full_design_matrix,
     multivariate_normal,
 )
-from sklearn.gaussian_process.kernels import RBF, DotProduct, WhiteKernel
+from sklearn.gaussian_process.kernels import RBF
 import numpy as np
 
 

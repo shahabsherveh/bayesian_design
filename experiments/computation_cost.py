@@ -1,5 +1,4 @@
 import argparse
-from numpy import number
 from numpy.random import normal
 from tqdm import trange
 from bed.data import create_synthetic_data

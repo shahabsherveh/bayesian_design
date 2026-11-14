@@ -2,7 +2,6 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 from flax import nnx
 
 from bed.data import create_synthetic_data

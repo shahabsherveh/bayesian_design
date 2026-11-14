@@ -5,7 +5,7 @@ Usage: python experiments/sequential_pkpd.py [--draws 10] [--budget 15] [--prior
 """
 import argparse, json, time
 from pathlib import Path
-import jax, numpy as np
+import jax
 jax.config.update("jax_enable_x64", True)
 from bed.experiments import Experiment
 from bed.mechanistic import make_pkpd_problem

@@ -198,7 +198,6 @@ class EKF:
         H_obs = self.model.jacobian(self.state_prior[0], x_obs)
         H_obs_T = jnp.matrix_transpose(H_obs)
         H_pred = self.model.jacobian(self.state_prior[0], x_pred)
-        H_pred_T = jnp.matrix_transpose(H_pred)
         cov_cross = H_pred @ self.state_prior[1] @ H_obs_T
         cov_cross_T = cov_cross.T if cov_cross.ndim == 2 else cov_cross.swapaxes(
             1, 2)

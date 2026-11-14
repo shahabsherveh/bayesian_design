@@ -5,7 +5,6 @@ This module provides abstract base classes that define the interface for
 experimental design problems and optimization strategies.
 """
 
-import numpy as np
 
 
 class Experiment:

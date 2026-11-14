@@ -20,7 +20,7 @@ from scipy.optimize import least_squares
 from scipy.stats import multivariate_t
 jax.config.update("jax_enable_x64", True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from linearized_greedy import epig_scores, eig_scores, greedy, greedy_averaged, update
+from linearized_greedy import epig_scores, eig_scores, greedy, greedy_averaged
 from bed.mechanistic import DivideModel, divide_biomarkers, make_divide_problem
 
 ARMS = ("EPIG", "EIG", "RANDOM", "FIXED-EPIG", "FIXED-EIG", "FIXED-EPIG-B", "FIXED-EIG-B")

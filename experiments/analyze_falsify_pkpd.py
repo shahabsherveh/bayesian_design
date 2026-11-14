@@ -39,7 +39,7 @@ def falsify(rows):
         v = {c: arr(c, "post_pred_sd", k) ** 2 for c in ("EPIG", "EIG", "RANDOM")}
         print(f"  exact predictive variance at pool: mean ratio EPIG/EIG {ratio_ci(v['EPIG'], v['EIG'])}  EPIG/RAND {ratio_ci(v['EPIG'], v['RANDOM'])}; EPIG lower than EIG in {winrate(v['EPIG'], v['EIG'])} of draws")
         print(f"  calibration: mean MSE (post-mean) / mean predictive variance, pooled over criteria: {np.mean(np.concatenate([arr(c, 'rmse_post', k) ** 2 for c in v])) / np.mean(np.concatenate(list(v.values()))):.2f}")
-        print(f"  EKF predictive sd / exact, median: " + ", ".join(f"{c} {np.median(arr(c, 'ekf_pred_sd', k) / arr(c, 'post_pred_sd', k)):.2f}" for c in v))
+        print("  EKF predictive sd / exact, median: " + ", ".join(f"{c} {np.median(arr(c, 'ekf_pred_sd', k) / arr(c, 'post_pred_sd', k)):.2f}" for c in v))
         lr = np.log(arr("EPIG", "rmse_post", k) / arr("EIG", "rmse_post", k)); print(f"  per-draw log-ratio EPIG/EIG (post-mean): median {np.median(lr):+.3f}, mean {lr.mean():+.3f}, sd {lr.std():.2f}")
         mse = {c: arr(c, "rmse_post", k) ** 2 for c in v}; d = mse["EPIG"] - mse["EIG"]
         print("  trimming the k most extreme paired differences: " + ", ".join(f"k={kk}: {mse['EPIG'][np.argsort(-np.abs(d))[kk:]].mean() / mse['EIG'][np.argsort(-np.abs(d))[kk:]].mean():.2f}" for kk in (0, 5, 15, 30)))
@@ -61,7 +61,7 @@ def laplace(rows):
         ekf_over_lap = np.array([[x["EPIG-EKF"]["ekf_pred_sd"][s][k] / x["EPIG-EKF"]["lap_pred_sd"][s][k] for s in range(B)] for x in rows])
         final_lap_over_exact = np.array([x[a]["lap_pred_sd"][-1][k] / x[a]["post_pred_sd"][k] for x in rows for a in arms]); final_ekf_over_exact = np.array([x[a]["ekf_pred_sd"][-1][k] / x[a]["post_pred_sd"][k] for x in rows for a in arms])
         print(f"  P3  final step: Laplace sd / exact median {np.median(final_lap_over_exact):.2f} [{np.percentile(final_lap_over_exact, 10):.2f}, {np.percentile(final_lap_over_exact, 90):.2f}]; EKF sd / exact median {np.median(final_ekf_over_exact):.2f}")
-        print(f"      EKF sd / Laplace sd along the EPIG-EKF run, median by step: " + " ".join(f"{v:.2f}" for v in np.median(ekf_over_lap, 0)))
+        print("      EKF sd / Laplace sd along the EPIG-EKF run, median by step: " + " ".join(f"{v:.2f}" for v in np.median(ekf_over_lap, 0)))
         # selection overlap between EKF- and Laplace-scored EPIG
         jac = [len(set(x["EPIG-EKF"]["selected"]) & set(x["EPIG-LAP"]["selected"])) / len(set(x["EPIG-EKF"]["selected"]) | set(x["EPIG-LAP"]["selected"])) for x in rows]
         if k == 1: print(f"  design overlap EPIG-EKF vs EPIG-LAP (Jaccard) median {np.median(jac):.2f}; EIG-EKF vs EIG-LAP {np.median([len(set(x['EIG-EKF']['selected']) & set(x['EIG-LAP']['selected'])) / len(set(x['EIG-EKF']['selected']) | set(x['EIG-LAP']['selected'])) for x in rows]):.2f}")

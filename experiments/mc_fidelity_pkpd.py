@@ -7,7 +7,7 @@ which cannot detect a non-Gaussian joint.
 Usage: python experiments/mc_fidelity_pkpd.py [--stride 12] [--inner 32000] [--repeats 8]
 """
 import argparse, json, time
-import jax, jax.numpy as jnp, numpy as np
+import jax, numpy as np
 from scipy.stats import spearmanr, pearsonr
 jax.config.update("jax_enable_x64", True)
 from bed.ekf import EKF

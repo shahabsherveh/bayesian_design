@@ -2,7 +2,7 @@ from flax import nnx
 import jax.numpy as jnp
 
 from bed.ekf import EKF
-from bed.models import LinearModel, LinearNN, NeuralNetworkRegressor
+from bed.models import LinearNN, NeuralNetworkRegressor
 
 
 class TestEKF:

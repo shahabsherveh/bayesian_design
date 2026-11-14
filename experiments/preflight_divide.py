@@ -11,7 +11,7 @@ import jax, jax.numpy as jnp, numpy as np
 from scipy.stats import spearmanr
 jax.config.update("jax_enable_x64", True)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from linearized_greedy import epig_scores, eig_scores, greedy, jacobians
+from linearized_greedy import greedy, jacobians
 from bed.mechanistic import DIVIDE_BIOMARKERS, DIVIDE_PRIOR_MEAN, DIVIDE_PRIOR_SD, divide_biomarkers, make_divide_problem
 from bed.diagnostics import gaussian_epig, mc_moments
 from bed.ekf import EKF

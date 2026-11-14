@@ -1,9 +1,7 @@
 from bed.data import (
-    create_synthetic_data,
-    create_synthetic_normal_mixture_data_1D,
     create_synthetic_skewnormal_mixture_data_1D,
 )
-from bed.models import DenseNN, LinearNN, NeuralNetworkRegressor, Sinus
+from bed.models import DenseNN, NeuralNetworkRegressor, Sinus
 from bed.experiments import Experiment
 import jax
 import jax.numpy as jnp

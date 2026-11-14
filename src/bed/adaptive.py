@@ -171,7 +171,7 @@ class AdaptiveQuadrature:
                 break
             c = heapq.heappop(heap)
             mid = 0.5 * (c.lo + c.hi)
-            kids, ksum = [], 0.0
+            kids = []
             for i in range(2):
                 for j in range(2):
                     klo = np.array([c.lo[0] if i == 0 else mid[0], c.lo[1] if j == 0 else mid[1]])

@@ -1,8 +1,5 @@
 """Optimization interfaces used by experimental-design algorithms."""
 
-from jax import numpy as jnp
-import jax
-import optax
 
 
 class OptimizerBase:

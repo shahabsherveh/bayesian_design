@@ -11,7 +11,6 @@ This module implements various models for optimal experimental design including:
 
 from copy import deepcopy
 from functools import partial
-from typing import Callable
 
 import cvxpy as cp
 import jax.numpy as jnp
