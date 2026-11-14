@@ -9,6 +9,7 @@ pytest-xdist
 pre-commit
 ruff
 ty
+pymarkdownlnt
 ipdb
 cvxpy
 jax

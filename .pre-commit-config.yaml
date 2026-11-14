@@ -19,6 +19,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: pymarkdown
+        name: pymarkdown
+        # --config is required: pymarkdown does not otherwise pick up the project file.
+        # Line length (MD013) is disabled there, matching the ruff E501 decision.
+        entry: pymarkdown --config .pymarkdown.json scan
+        language: system
+        types: [markdown]
+
       - id: ty
         name: ty check src/
         # ty is installed with the project (see requirements.txt), so this runs the

@@ -125,18 +125,18 @@ Ordered by impact on the ability of an outside reader to trust or reproduce resu
    Verified locally against the exact commands (both exits 0), and each gate was confirmed
    to exit 1 on a deliberate violation. Not yet observed running on GitHub's runners.
 
-14. **The fast gates also run in a pre-commit hook.** `.pre-commit-config.yaml` runs the same
-    ruff and ty checks before every commit, which is a better place for them than CI: they
-    take under a second combined, while the test suite takes about five minutes even
-    parallelised and is deliberately left to CI.
+10. **The fast gates also run in a pre-commit hook.** `.pre-commit-config.yaml` runs ruff, ty
+    and pymarkdown before every commit, which is a better place for them than CI: they take
+    about a second combined, while the test suite takes about five minutes even parallelised
+    and is deliberately left to CI.
 
     Install once per clone: `python -m pip install pre-commit && pre-commit install`.
     `pre-commit` is in `requirements.txt`, so `pip install -e .` already provides it.
 
     `ruff` and `ty` were previously missing from `requirements.txt` (CI pip-installed ruff
     inline and ty was only present as a global binary), so a fresh clone could not run
-    either check. Both are now declared, which is also what lets the hook and CI use the
-    same versions as each other.
+    either check. They are now declared, along with `pymarkdownlnt`, which is what lets the
+    hook and CI use the same versions as each other.
 
     Verified the hook blocks a commit: staging a file with an undefined name fails both
     hooks and `git commit` exits 1 with no commit created. `pre-commit run --all-files`
@@ -204,13 +204,26 @@ Ordered by impact on the ability of an outside reader to trust or reproduce resu
     Verified the gate can fail: injecting `return undefined_name` into `src/` produces
     `error[unresolved-reference]` and exit 1; the clean tree exits 0.
 
+14. **Markdown was unchecked; now linted.** `pymarkdownlnt` 0.9.41 is wired into both the
+    `lint` CI job and the pre-commit hook. The initial scan found 92 problems in the three
+    markdown files, of which 90 were `MD013` (line length, default 80) — the same judgment
+    call as ruff's `E501`, so `MD013` is disabled in `.pymarkdown.json` rather than wrapping
+    every paragraph. Note that pymarkdown does **not** auto-discover that file, so both the
+    hook and CI pass `--config .pymarkdown.json` explicitly.
+
+    The two real findings were both in this document, introduced by earlier edits here: an
+    ordered-list prefix out of sequence (`14.` sitting between `9.` and `11.`, now
+    renumbered 1-13 with no gaps) and a fenced code block with no language (`MD040`). Both
+    are fixed. The remaining rules do catch real problems — a bare fence, list numbering,
+    missing space after `#` — verified by feeding pymarkdown a deliberately malformed file.
+
 ## Verified state
 
 A full suite run was completed after fixing the issues below. Environment: Python 3.12.16,
 all of `requirements.txt` except `tensorflow`/`tensorflow-datasets` (572 MB, only needed by the
 lazily-imported MNIST loader), plus `matplotlib`.
 
-```
+```text
 138 passed, 3 skipped in 808s
 ```
 
