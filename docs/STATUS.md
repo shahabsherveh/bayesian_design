@@ -145,6 +145,31 @@ and `config_test.py`, i.e. expected in this environment and not failures.
 The empty `.venv/` was bootstrapped with `python -m ensurepip --upgrade` and
 `pip install --no-deps -e .` (no-deps avoids pulling TensorFlow).
 
+## Test suite runtime
+
+A serial run takes about **13 minutes**; five tests account for roughly 365s of it:
+
+| Test | Serial | Cause |
+| --- | --- | --- |
+| `corrections_test.py::test_divide_truth_distribution_matches_the_belief_prior_across_seeds` | 182s | 600 `divide_problem` constructions, ~220ms each |
+| `adaptive_test.py::test_the_rectangle_expands_until_the_frame_is_empty` | 83s | dense adaptive quadrature |
+| `adaptive_test.py::test_the_order_gate_refuses_to_certify_a_density_it_cannot_resolve` | 58s | same |
+| `adaptive_test.py::test_a_low_order_reports_convergence_at_a_grossly_wrong_value` | 42s | same |
+| `mechanistic_test.py::test_runner_runs_the_pkpd_problem_with_both_filters_and_reports_per_output_rmse` | 39s | sequential runner |
+
+The dominant cost is **JAX recompilation**, not the statistics: `make_divide_problem` derives its
+key with `jax.random.PRNGKey(seed)`, which is a distinct traced constant per seed, so each call is
+a cold XLA compile (~130ms of the ~220ms). `cProfile` shows `backend_compile_and_load` taking
+roughly half the wall time even after warmup.
+
+**Use `pytest tests/ -n auto` (or `-n 4`).** Measured on 8 cores: 253s versus 800s serial, same
+138 passed / 3 skipped, with no change to what is asserted. Reducing the seed count was tested and
+rejected: at 50 seeds the statistic still passes but `max|sd - 1| = 0.1229` against a `0.15`
+tolerance, leaving only 18% headroom, which would be flaky across machines.
+
+A structural fix (cache the compilation via `fold_in`-based keys and static shapes) would help
+further but touches core model code and was not attempted.
+
 ## Verification limits
 
 Still not executed in this snapshot:
