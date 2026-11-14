@@ -22,3 +22,7 @@ results/**/raw/
 graphify-out/
 .agents/
 .pytest_cache/
+
+# Agent planning artifacts (implementation plans and task checklists), not part of the library
+# hand-edited by anyone but that run's author.
+tasks/
