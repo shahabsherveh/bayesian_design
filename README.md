@@ -19,10 +19,14 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e .
+# Dev tooling (pytest, linters, pre-commit) is a separate extra, not a runtime dep.
+python -m pip install -r requirements-dev.txt
 ```
 
 The package imports TensorFlow for the MNIST data loader, so `tensorflow` is
 included in `requirements.txt` even when running only synthetic experiments.
+`requirements-dev.txt` brings in the test runner and lint tools on top of the
+runtime set.
 
 ## Run tests
 

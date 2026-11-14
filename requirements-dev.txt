@@ -1,0 +1,13 @@
+# Development-only tooling. These are not runtime dependencies of the `bed` package;
+# they are needed to run the test suite and the pre-commit gates. Keep the versions in
+# sync with whatever the pre-commit hooks pin (see .pre-commit-config.yaml).
+
+-r requirements.txt
+
+pytest
+pytest-xdist
+pre-commit
+ruff
+ty
+pymarkdownlnt
+ipdb

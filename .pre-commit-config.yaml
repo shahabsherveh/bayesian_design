@@ -29,8 +29,8 @@ repos:
 
       - id: ty
         name: ty check src/
-        # ty is installed with the project (see requirements.txt), so this runs the
-        # same version as CI rather than whatever happens to be on PATH.
+        # ty is installed with the project dev tooling (see requirements-dev.txt), so
+        # this runs the same version as CI rather than whatever happens to be on PATH.
         entry: ty check src/ --exit-zero-on-warning
         language: system
         types: [python]
