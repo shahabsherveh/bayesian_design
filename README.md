@@ -28,6 +28,21 @@ included in `requirements.txt` even when running only synthetic experiments.
 `requirements-dev.txt` brings in the test runner and lint tools on top of the
 runtime set.
 
+## Development workflow
+
+`main` is protected: direct commits to it are blocked by the
+`no-commit-to-branch` pre-commit hook. Do all work on a short-lived branch and
+merge it back into `main` via pull request.
+
+```bash
+git checkout main
+git pull
+git checkout -b feat/my-change   # or fix/, refactor/, chore/
+# ... make changes, commit them ...
+git push -u origin feat/my-change
+# open a pull request, then merge into main after review
+```
+
 ## Run tests
 
 Run the complete suite:
