@@ -156,6 +156,33 @@ Ordered by impact on the ability of an outside reader to trust or reproduce resu
     `laplace_refit_pkpd.py` imports after a `sys.path` insert. Both are order-dependent;
     the backend was verified to still resolve to `Agg`.
 
+13. **Type checking was absent; now gated on `src/` with the codebase's real error count at
+    zero.** `ty` 0.0.104 reports **201 diagnostics** across the repository. Gating on all of
+    them would block every commit, so the gate is scoped to the library and runs with
+    `--exit-zero-on-warning`:
+
+    | Path | errors | warnings | gated? |
+    | --- | --- | --- | --- |
+    | `src/` | 0 *(2 before `import-not-found` was downgraded)* | 70 | yes |
+    | `tests/` | 8 | 8 | no |
+    | `experiments/` | 25 | 33 | no |
+
+    The `tests/` and `experiments/` errors are not defects: 4 are `import-not-found` for
+    sibling scripts imported after a `sys.path` insert, and the rest are Optional-narrowing
+    patterns (`assert x is not None` then `x[...]`) that ty cannot follow. Annotating those
+    away would add noise to research scripts for no safety gain.
+
+    The 70 remaining `src/` warnings are real typing gaps, not bugs: `ISResult` is a
+    dataclass whose attributes (`method`, `rhat_max`, `ess_bulk_min`) are attached after
+    construction, and several classes leave `self.model` unannotated so it infers as
+    `object`. Fixing them means introducing annotations and possibly a protocol — a
+    deliberate typing pass, not a CI change. They are downgraded to warnings so the gate
+    catches **new** errors (undefined names, bad argument types that are not already
+    known) without demanding that rewrite.
+
+    Verified the gate can fail: injecting `return undefined_name` into `src/` produces
+    `error[unresolved-reference]` and exit 1; the clean tree exits 0.
+
 ## Verified state
 
 A full suite run was completed after fixing the issues below. Environment: Python 3.12.16,
@@ -235,3 +262,6 @@ The suite now runs non-interactively with plain `pytest tests/`; the
    adjust the `.gitignore` comment so it does not claim they are kept.
 8. Optionally enable the stylistic ruff rules (`E5`, `E7`, `I`, `UP`) after a deliberate
    `ruff format` pass. Not done here because it rewrites most of the analysis code.
+9. Optionally do a typing pass on `src/` to clear the 70 `ty` warnings, then flip the gate to
+   `--error-on-warning`. The main items are annotating `self.model` on the `ISResult`/`Posterior`
+   paths and declaring the attributes set after construction.

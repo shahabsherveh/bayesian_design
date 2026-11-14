@@ -39,6 +39,15 @@ jobs:
           python -m pip install ruff
           ruff check src/ tests/ experiments/
 
+      - name: Type check with ty
+        run: |
+          python -m pip install ty
+          # src/ only: tests/ and experiments/ import sibling scripts via sys.path and
+          # carry Optional-narrowing patterns ty cannot follow, which is not worth
+          # annotating away. --exit-zero-on-warning means only error-level diagnostics
+          # fail the job; the 70 pre-existing warnings do not.
+          ty check src/ --exit-zero-on-warning
+
       - name: Run the test suite
         env:
           MPLBACKEND: Agg
