@@ -93,7 +93,7 @@ results = experiment.run_experiment(
         "EPIG",
         "EIG",
         # "EPIG-MC",
-        # "RAND",
+        # "RANDOM",
     ],
     iterations=epochs,
     # optimizer_method="grid_search",

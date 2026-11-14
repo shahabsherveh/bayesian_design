@@ -317,7 +317,7 @@ def experiment(
     strategies: str | None = typer.Option(
         None,
         "--strategies",
-        help="Comma-separated strategy list (e.g. EPIG,EIG,EPIG-MC,RAND).",
+        help="Comma-separated strategy list (e.g. EPIG,EIG,EPIG-MC,RANDOM).",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Validate config and print execution summary."

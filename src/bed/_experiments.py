@@ -342,7 +342,7 @@ class Experiment:
         )(key)
         return val
 
-    def optimize(self, criterion_func, method, filtr, params={"lr": 1, "max_iters": 50}, exclude=None):
+    def optimize(self, criterion_func, method, filtr, params=None, exclude=None):
         """
         Optimize design using gradient ascent on information criterion.
 
@@ -377,6 +377,8 @@ class Experiment:
             Uses gradient ASCENT (not descent) since we maximize information.
             Progress displayed via tqdm progress bar.
         """
+        if params is None:
+            params = {"lr": 1, "max_iters": 50}
         seeds = self._rng.integers(
             0, 10000, size=(self.design_space.shape[0],)
         )  # Random keys for randomness in criterion
@@ -447,7 +449,7 @@ class Experiment:
         filter_instance,
         epochs,
         optimizer="grid_search",
-        optimizer_params={"lr": 1, "max_iters": 50},
+        optimizer_params=None,
         trace=False,
         exclude=None,
         rng=None,
@@ -493,6 +495,8 @@ class Experiment:
             raise ValueError(
                 f"Unknown criterion '{criterion_label}'; choose from {sorted(criterion_dict)}")
         criterion_func = criterion_dict[criterion_label]
+        if optimizer_params is None:
+            optimizer_params = {"lr": 1, "max_iters": 50}
         self._rng = rng if rng is not None else np.random.default_rng(
             self.seed)
         used_indices = set() if exclude is None else {int(i) for i in exclude}
@@ -581,16 +585,16 @@ class Experiment:
 
     def calculate_rmse(self, cov):
         """
-        Calculate root mean squared error for predictions.
+        Mean predictive uncertainty over a batch of covariance matrices.
 
         Args:
-            cov: Predictive covariance matrix or batch of covariance matrices.
+            cov: Batch of predictive covariance matrices, shape ``(n, d_y, d_y)``.
+                A single ``(d_y, d_y)`` matrix yields one value.
 
         Returns:
-            Average RMSE across all prediction locations (scalar)
+            The mean over the batch of ``sqrt(tr(cov))``, a scalar.
         """
-        rmse_pred = (jnp.linalg.trace(cov)**.5).mean()
-        return rmse_pred
+        return (jnp.linalg.trace(cov) ** 0.5).mean()
 
     def calculate_rmse_per_output(self, predictions, true_measurements):
         """RMSE over the design points, separately for each output dimension (shape ``(d_y,)``)."""
@@ -633,12 +637,12 @@ class Experiment:
 
     def run_experiment(
         self,
-        criteria=["EPIG", "EIG", "EPIG-MC", "RAND"],
-        filter_types=["ukf", "ekf"],
-        filter_params=[{}, {}],
+        criteria=None,
+        filter_types=None,
+        filter_params=None,
         iterations=10,
         optimizer_method="brute_force",
-        optimizer_params={"lr": 1, "max_iters": 50},
+        optimizer_params=None,
         trace=False
     ):
         """
@@ -648,6 +652,14 @@ class Experiment:
         to enable direct comparison of the two design criteria.
 
         Args:
+            criteria: Strategies to compare. Defaults to EPIG, EIG and RANDOM.
+                EPIG-MC is supported but excluded from the default because its
+                nested Monte Carlo estimate costs ``num_latent_samples`` model
+                evaluations per pool point; pass it explicitly to include it.
+            filter_types: Filters to evaluate, one per entry in ``filter_params``.
+                Defaults to ``["ukf", "ekf"]``.
+            filter_params: Constructor overrides per filter, parallel to
+                ``filter_types``. Defaults to empty overrides for each filter.
             iterations: Number of sequential experiments for each method
             optimizer_params: Optimization settings (passed to run())
 
@@ -658,6 +670,14 @@ class Experiment:
             Creates a deepcopy of self for the second experiment to ensure
             independent EKF state evolution.
         """
+        if criteria is None:
+            criteria = ["EPIG", "EIG", "RANDOM"]
+        if filter_types is None:
+            filter_types = ["ukf", "ekf"]
+        if filter_params is None:
+            filter_params = [{} for _ in filter_types]
+        if optimizer_params is None:
+            optimizer_params = {"lr": 1, "max_iters": 50}
         results = []
         for i, filter_type in enumerate(filter_types):
             filter_kwargs = filter_params[i]
