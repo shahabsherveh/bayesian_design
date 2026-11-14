@@ -34,6 +34,11 @@ jobs:
       - name: Show the resolved environment
         run: python -m pip list
 
+      - name: Lint with ruff
+        run: |
+          python -m pip install ruff
+          ruff check src/ tests/ experiments/
+
       - name: Run the test suite
         env:
           MPLBACKEND: Agg

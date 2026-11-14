@@ -31,3 +31,28 @@ testpaths = [
 ]
 addopts = "-s"
 
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Correctness only. This is a research codebase written in a deliberately dense style
+# (compact statements, long lines, semicolons), so the stylistic rule sets are left off
+# rather than mass-reformatting 2000+ lines of analysis code. Enforce what would be a bug.
+select = [
+  "E4",   # duplicate names in imports
+  "E7",   # statement-level mistakes (redefinition, comparison abuse)
+  "E9",   # syntax/runtime errors
+  "F",    # pyflakes: unused imports/variables, undefined names
+  "W6",   # invalid escape sequences
+  "PLE",  # pylint: errors only
+]
+ignore = [
+  "E401",  # multiple imports on one line — compact style used throughout
+  "E402",  # imports after code — deliberate in the experiment scripts
+  "E501",  # line length — the codebase uses long lines by design
+  "E701",  # multiple statements on one line (colon)
+  "E702",  # multiple statements on one line (semicolon)
+  "E731",  # lambda assignment
+  "E741",  # ambiguous variable name (l, I, O)
+]

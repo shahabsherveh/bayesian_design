@@ -115,14 +115,29 @@ Ordered by impact on the ability of an outside reader to trust or reproduce resu
    at `bed-0.0.1.dist-info/licenses/LICENSE`. The copyright line names both authors with
    commits in the history (Shahab Sherveh and Jens Sjölund, 21 commits).
 
-9. **No CI.** `.github/` contains no Actions workflow (the `copilot-instructions.md` file was
-   deleted in `4b2cbd8`). Nothing currently prevents a red suite from
-   landing, though with `--pdb` removed a workflow can now detect it.
+9. ~~**No CI.**~~ **Fixed.** `.github/workflows/tests.yml` runs on push to `main`, on pull
+   requests, and on manual dispatch: Python 3.12, CPU-only JAX, a ruff lint gate, then
+   `pytest tests/ -q -n auto`. Verified locally against the exact commands (lint exit 0,
+   suite exit 0), and the lint gate was confirmed to exit 1 on a deliberate violation.
+   Not yet observed running on GitHub's runners.
 
-11. **`matplotlib` is an undeclared dependency.** It is imported lazily inside
-    `_models.py` (plotting methods) but is absent from `requirements.txt`, so 4 tests fail
-    with `ModuleNotFoundError` on a clean install. Either declare it or guard the imports
-    like the plotting code does elsewhere.
+11. ~~**`matplotlib` is an undeclared dependency.**~~ **Fixed.** Declared in
+    `requirements.txt`, alongside `pytest-xdist`. A clean install now resolves the four
+    tests that previously failed with `ModuleNotFoundError`.
+
+12. **Linting was absent; now gated, with a deliberately narrow rule set.** `pyproject.toml`
+    had no `[tool.ruff]` section, so nothing was checked. A ruff gate was added with
+    `select = [E4, E7, E9, F, W6, PLE]` — correctness rules only. The stylistic rules are
+    ignored on purpose: the codebase yields 1418 `E501` (line-too-long) and 528 `E702`
+    (semicolon) violations, i.e. it has never been formatted by a tool and uses a dense
+    research style. Enforcing those would mean rewriting ~2000 lines of analysis code and
+    would bury real defects under noise. Turning the stylistic rules on would be a separate,
+    deliberate reformatting decision.
+
+    The initial `F` sweep removed 40 dead imports and 5 unused variables. All were verified
+    non-behavioural: no `__init__.py` re-exports and no side-effect imports were touched, the
+    three unused variables that ruff marks unsafe were reviewed by hand rather than
+    auto-fixed, and the full suite was re-run after each directory (138 passed, 3 skipped).
 
 ## Verified state
 
@@ -196,8 +211,10 @@ The suite now runs non-interactively with plain `pytest tests/`; the
 3. ~~Recover or rewrite `PROGRESS.md` and commit it.~~ Resolved by stripping the dangling
    references instead; see issue 1 for what that costs.
 4. Add wrappers for configs 4 and 5, or drop them.
-5. ~~Add `LICENSE` (MIT).~~ Done. Remaining: add a minimal GitHub Actions workflow running
-   the suite; it can now rely on pytest's exit code.
-6. Declare or guard `matplotlib` in `requirements.txt`.
+5. ~~Add `LICENSE` (MIT) and a GitHub Actions workflow.~~ Done; the workflow gates on lint
+   and tests.
+6. ~~Declare or guard `matplotlib` in `requirements.txt`.~~ Done, with `pytest-xdist`.
 7. Decide whether `results/` summaries should be tracked; if so, commit them, otherwise
    adjust the `.gitignore` comment so it does not claim they are kept.
+8. Optionally enable the stylistic ruff rules (`E5`, `E7`, `I`, `UP`) after a deliberate
+   `ruff format` pass. Not done here because it rewrites most of the analysis code.
