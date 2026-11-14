@@ -217,6 +217,26 @@ Ordered by impact on the ability of an outside reader to trust or reproduce resu
     are fixed. The remaining rules do catch real problems — a bare fence, list numbering,
     missing space after `#` — verified by feeding pymarkdown a deliberately malformed file.
 
+15. **Autofix runs only on demand, and only for the tools that can actually fix.**
+    `.github/workflows/autofix.yml` is `workflow_dispatch` only — deliberately not
+    push-triggered, since a workflow that writes to the repository and is triggered by
+    pushes can loop. It runs `ruff check --fix` and `pymarkdown fix`, then **re-runs the
+    full gate set** on the result before pushing, so a fixer that breaks something cannot
+    land. It defaults to opening a PR from an `autofix/<branch>-<timestamp>` branch;
+    unchecking `open_pr` commits straight to the branch instead.
+
+    `ty` is deliberately **not** in the autofix workflow. Its `--fix` cannot rephrase type
+    errors: verified on this codebase it reports `0 fixed, 72 remaining`, and on a minimal
+    case (`x: int = "not an int"`) likewise `0 fixed`. Including it would imply a repair
+    that does not happen.
+
+    Also verified: an `F841` unused local (which ruff classes unsafe) leaves the tree
+    non-clean after `--fix`, so the workflow stops at the verify step and pushes nothing.
+    Both paths were exercised locally — fixed-and-verified, and fixed-but-still-dirty.
+
+    Note it needs `AUTOFIX_TOKEN` (or the default token) to push; the built-in
+    `GITHUB_TOKEN` cannot push to a protected `main`, so the PR path is the default.
+
 ## Verified state
 
 A full suite run was completed after fixing the issues below. Environment: Python 3.12.16,
