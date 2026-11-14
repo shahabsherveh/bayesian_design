@@ -8,6 +8,14 @@
 # Run manually against everything:
 #   pre-commit run --all-files
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: no-commit-to-branch
+        # Refuse to commit directly to main (this hook also protects master by
+        # default). Feature work goes on a branch and is merged back via PR.
+        args: [--branch, main]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.5
     hooks:
