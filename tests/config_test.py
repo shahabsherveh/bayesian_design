@@ -58,6 +58,9 @@ def test_short_run_of_experiment_0_completes():
     results = climain.run_experiment_from_config("experiment_0", iterations=2, strategies=["EPIG", "RANDOM"], show_plot=False)
     r = results.experiment_results_dict["ekf"]["EPIG"]
     assert len(r.rmse_pool) == 2
-    # experiment_0 optimizes over a continuous grid, so designs are points, not pool indices
-    assert len(r.selected_designs) == 2 and r.selected_indices == []
+    # experiment_0 uses grid_search, which now selects real pool points: each
+    # epoch records one design and its pool index.
+    assert len(r.selected_designs) == 2
+    assert len(r.selected_indices) == 2
+    assert all(isinstance(i, int) for i in r.selected_indices)
     assert "WARM-START" in results.experiment_results_dict["ekf"]

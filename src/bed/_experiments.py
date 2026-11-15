@@ -360,9 +360,9 @@ class Experiment:
         """
         Select the design that maximizes an information criterion.
 
-        Supports three methods: exhaustive pool search (``brute_force``),
-        gradient ascent via JAX automatic differentiation (``gradient_ascent``),
-        and uniform grid search over the design space (``grid_search``).
+        Supports three methods: exhaustive pool search (``brute_force``), gradient
+        ascent via JAX automatic differentiation (``gradient_ascent``), and a
+        reduced-budget pool search (``grid_search``).
 
         Args:
             criterion_func: Criterion to maximise, with signature
@@ -372,14 +372,15 @@ class Experiment:
             filtr: Filter whose belief defines the criterion.
             params: Method-specific options (e.g. ``lr``, ``max_iters``,
                 ``num_samples``). Defaults to ``{"lr": 1, "max_iters": 50}``.
-            exclude: Set of pool indices that may not be selected (used by
-                ``brute_force`` to select without replacement).
+            exclude: Set of pool indices that may not be selected. Applies to all
+                methods: ``brute_force``/``grid_search`` mask them before the
+                argmax, ``gradient_ascent`` snaps to the nearest non-excluded
+                pool point.
 
         Returns:
             Tuple ``(best_index, x, crit_value)`` where:
-                - ``best_index``: integer pool index for ``brute_force``; the
-                  design vector itself for ``gradient_ascent`` and ``grid_search``
-                - ``x``: the selected design
+                - ``best_index``: integer index into ``self.design_space``
+                - ``x``: the selected design, ``self.design_space[best_index]``
                 - ``crit_value``: criterion value at the selected design
         """
         if params is None:
@@ -427,24 +428,69 @@ class Experiment:
                 crit_value, grads = grad_func(x)
                 x += lr * grads
                 pbar.set_postfix({f"{criterion_func.__name__}": crit_value})
-            x = x.squeeze(0)
-            best_index = x
+            # gradient ascent explores the continuous design box; snap the final
+            # iterate to the nearest allowed pool point so the result is a real,
+            # observable design with a pool index like the other methods.
+            best_index = self._nearest_pool_index(x.squeeze(0), exclude)
+            x = self.design_space[best_index]
+            crit_value = jnp.asarray(criterion_func(
+                x=x[None, ...], filtr=filtr, key=keys[:1])).reshape(-1)[0]
         elif method == "grid_search":
             num_samples = params.get("num_samples", 200)
-            samples_shape = list(self.design_space.shape)
-            samples_shape[0] = num_samples
-            grid = jax.random.uniform(
-                key=jax.random.key(0),
-                shape=samples_shape,
-                minval=self.design_space.min(axis=0),
-                maxval=self.design_space.max(axis=0),
-            )
-            grid_values = criterion_func(x=grid, filtr=filtr, key=keys)
-            x = grid[jnp.argmax(grid_values)]
-            best_index = x
-            crit_value = grid_values.max()
+            # Sample candidate designs from the pool with replacement, so the
+            # result is a real (observable) design and has a pool index.
+            best_index, crit_value = self._pool_sample_search(
+                criterion_func, filtr, num_samples, exclude)
+            x = self.design_space[best_index]
 
         return best_index, x, crit_value
+
+    def _nearest_pool_index(self, x, exclude=None):
+        """Return the pool index closest to design ``x``, skipping excluded ones."""
+        dist = jnp.sum((self.design_space - x) ** 2, axis=tuple(range(1, self.design_space.ndim)))
+        if exclude:
+            if len(exclude) >= dist.shape[0]:
+                raise ValueError("Every design in the pool has been observed.")
+            dist = dist.at[jnp.asarray(sorted(exclude))].set(jnp.inf)
+        return jnp.argmin(dist)
+
+    def _pool_sample_search(self, criterion_func, filtr, num_samples, exclude=None):
+        """Evaluate a criterion on ``num_samples`` pool points drawn with replacement.
+
+        Returns the winning pool index and its criterion value. Excluded indices
+        are masked before the argmax; if every drawn point is excluded, fall back
+        to evaluating the full non-excluded pool. Raises only when the whole pool
+        is excluded.
+        """
+        n = self.design_space.shape[0]
+        if exclude and len(exclude) >= n:
+            raise ValueError("Every design in the pool has been observed.")
+        idx = jax.random.randint(
+            jax.random.key(0), (num_samples,), 0, n)
+        # The criterion consumes one key per candidate design.
+        sample_keys = self._criterion_keys(num_samples)
+        values = jnp.asarray(criterion_func(
+            x=self.design_space[idx], filtr=filtr, key=sample_keys)).reshape(-1)
+        if exclude:
+            allowed = ~jnp.isin(idx, jnp.asarray(sorted(exclude)))
+            if not bool(jnp.any(allowed)):
+                # Every drawn point was excluded: evaluate the full allowed pool.
+                keep = [i for i in range(n) if i not in set(int(e) for e in exclude)]
+                allowed_idx = jnp.asarray(keep)
+                pool_values = jnp.asarray(criterion_func(
+                    x=self.design_space[allowed_idx],
+                    filtr=filtr,
+                    key=self._criterion_keys(len(keep)),
+                )).reshape(-1)
+                return allowed_idx[jnp.argmax(pool_values)], pool_values.max()
+            values = values.at[~allowed].set(-jnp.inf)
+        best_pos = jnp.argmax(values)
+        return idx[best_pos], values[best_pos]
+
+    def _criterion_keys(self, count):
+        """Return ``count`` per-candidate random keys from the runner's generator."""
+        seeds = self._rng.integers(0, 10000, size=(count,))
+        return jax.vmap(jax.random.key)(seeds)
 
     def run(
         self,
@@ -545,9 +591,8 @@ class Experiment:
                 exclude=used_indices,
             )
             measurement = self.data.observe(best_index)
-            if jnp.ndim(best_index) == 0 and jnp.issubdtype(jnp.asarray(best_index).dtype, jnp.integer):
-                used_indices.add(int(best_index))
-                selected_indices.append(int(best_index))
+            used_indices.add(int(best_index))
+            selected_indices.append(int(best_index))
             posterior = filtr.get_state_posterior(
                 measurement, x_opt[None, ...])
 
