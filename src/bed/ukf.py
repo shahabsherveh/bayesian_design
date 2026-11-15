@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from flax.nnx import Rngs
 from scipy.stats import multivariate_normal
 
-from bed._models import DenseNN, Model, NeuralNetworkRegressor
+from bed.models import DenseNN, Model, NeuralNetworkRegressor
 
 
 class UKF:
