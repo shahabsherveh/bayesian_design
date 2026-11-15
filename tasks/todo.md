@@ -56,8 +56,9 @@ still becomes a delta spec (`SPEC-<change>.md`) and runs through the spec-approv
 ### Still open (from `docs/STATUS.md` "Suggested next steps")
 
 - [x] 5. Add wrappers for `experiment_4`/`experiment_5` configs (added in #19).
-- [ ] 6. Decide whether `results/` summaries should be tracked; if so, commit them,
-  otherwise fix the `.gitignore` comment so it does not claim they are kept.
+- [x] 6. Decide whether `results/` summaries should be tracked — resolved: `results/` is
+  regenerable local output and remains untracked (the `.gitignore` comment now states
+  this instead of claiming summaries are kept).
 - [ ] 7. (Optional) Enable stylistic ruff rules after a deliberate `ruff format` pass.
 - [ ] 8. (Optional) Typing pass on `src/` to clear the ~70 `ty` warnings, then flip the
   gate to `--error-on-warning` (annotate `self.model` on the `ISResult`/`Posterior`
