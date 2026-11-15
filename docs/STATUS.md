@@ -351,8 +351,10 @@ Two review claims were wrong and are corrected here rather than acted on:
   collapses it. Removing it broke 7 runner tests. It is a documentation defect, not a
   logic defect.
 
-Still open from the review (not done here): stale `Experiment`/`ExperimentResults`
-docstrings, splitting `_models.py` (1297 lines) beside its shims, the `optimize()`
-return-shape inconsistency (int index vs design vector) that makes `used_indices` inert
-for `gradient_ascent`/`grid_search`, `_rng` being reseeded inside `run()`, and `trace=True`
-deep-copying a full covariance per epoch. See `tasks/plan.md`.
+Still open from the review (not done here): splitting `_models.py` (1297 lines) beside its
+shims, the `optimize()` return-shape inconsistency (int index vs design vector) that makes
+`used_indices` inert for `gradient_ascent`/`grid_search`, `_rng` being reseeded inside
+`run()`, and `trace=True` deep-copying a full covariance per epoch. The stale
+`Experiment`/`ExperimentResults` docstrings item was resolved in a follow-up delta
+(`SPEC-stale-docstrings.md`, branch `docs/fix-stale-docstrings`) — documentation-only; the
+suite result is unchanged at 139 passed, 3 skipped. See `tasks/plan.md`.

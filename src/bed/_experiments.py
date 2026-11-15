@@ -29,15 +29,19 @@ class Experiment:
     4. Tracks prediction accuracy over time
 
     Attributes:
-        model: LinearModel for measurements
-        state_init_prior: Initial prior over latent parameters
-        design_dist: Distribution for sampling design candidates
-        latent_true: True latent parameters (for simulation/evaluation)
-        design_space: Pool of candidate design points
-        measurement_error: Observation noise variance
+        model: Measurement model (a NeuralNetworkRegressor or compatible)
+        state_init_prior: Initial prior over latent parameters, (mean, cov)
+        data: Dataset container providing train/test pools and observations
+        design_pool: Candidate design points for selection
+        design_space: Pool of designs combined with the training inputs
+        true_measurements: Corresponding observations for the design space
+        measurement_error: Observation noise (co)variance
         latent_innovation: Process noise covariance
-        ekf: Selected Kalman filter for state estimation
-        plot_results: Whether to visualize results during optimization
+        warm_start: Number of warm-start design selections
+        seed: Random seed supplied to the runner's generator
+        init: How the warm-start belief is formed ("filter" or "empirical_bayes")
+        empirical_bayes_kwargs: Options passed to the empirical Bayes initialisation
+        _rng: NumPy generator reused across (filter, criterion) runs
     """
 
     def __init__(
@@ -61,16 +65,26 @@ class Experiment:
         Initialize sequential experimental design framework.
 
         Args:
-            latent_dim: Dimension of latent parameter space
-            latent_var: Initial prior variance for latent parameters
-            latent_innovation: Process noise covariance matrix
-            latent_true: True latent parameters for simulation (d, 1)
-            design_cov: Covariance matrix for design distribution
-            design_mean: Mean vector for design distribution
-            design_pool_num: Number of candidate designs to sample
-            measurement_error: Observation noise variance (scalar)
-            plot_results: If True, plot optimization surfaces during run
-            filter_type: State estimator to use, either ``"ekf"`` or ``"ukf"``.
+            latent_cov: Prior covariance over latent parameters. If None, derived
+                from ``latent_var`` (see below); one of the two is required.
+            latent_innovation: Process noise covariance (scalar or matrix).
+            measurement_error: Observation noise (co)variance. Required.
+            data: Dataset container with train/test pools and observations.
+            model: Measurement model exposing a ``flax_model`` (and its
+                ``weight_size``). Required unless ``latent_mean`` is given.
+            latent_var: Scalar prior variance; used to build ``latent_cov`` when
+                ``latent_cov`` is None. Mutually exclusive with ``latent_cov``.
+            warm_start: Number of warm-start design selections.
+            pre_train_model: If True, train ``model`` on ``data`` before use.
+            training_kwargs: Passed to ``model.train`` when ``pre_train_model``.
+            plot_inter_results: If True, plot intermediate results during runs.
+            seed: Random seed for reproducible (filter, criterion) runs.
+            init: How the warm-start belief is formed: ``"filter"`` (process the
+                warm-start observations with the filter) or ``"empirical_bayes"``
+                (fit the prior scale, and optionally noise, by marginal likelihood).
+            empirical_bayes_kwargs: Options for the empirical Bayes initialisation.
+            latent_mean: Prior mean for latent parameters. Required for models
+                without a ``flax_model``; otherwise inferred from the model weights.
         """
         if latent_cov is None:
             if latent_var is None:
@@ -344,38 +358,29 @@ class Experiment:
 
     def optimize(self, criterion_func, method, filtr, params=None, exclude=None):
         """
-        Optimize design using gradient ascent on information criterion.
+        Select the design that maximizes an information criterion.
 
-        Uses JAX automatic differentiation to compute gradients and perform
-        gradient ascent to find the design that maximizes the given criterion.
-        Supports both stochastic (single random prediction point) and full
-        (all prediction points) gradient estimation.
+        Supports three methods: exhaustive pool search (``brute_force``),
+        gradient ascent via JAX automatic differentiation (``gradient_ascent``),
+        and uniform grid search over the design space (``grid_search``).
 
         Args:
-            criterion_func: Function to maximize (e.g., calculate_epig or calculate_eig).
-                Should have signature func(x_obs, x_pred) -> scalar.
-            criterion_label: Name of criterion for logging (e.g., "EPIG", "EIG")
-            max_iters: Maximum number of gradient ascent iterations
-            learning_rate: Step size for gradient ascent (default: 0.01)
-            x_init: Initial design. If None, determined by x_init_type.
-            tol: Gradient norm tolerance for early stopping. If None, runs full iterations.
-            stochastic: If True, use single random prediction point per iteration.
-                If False, use all prediction points (slower but more accurate).
-            x_init_type: How to initialize design if x_init is None:
-                - "random": Random design from pool
-                - "best_pool": Design from pool with highest criterion value
-                - "normal": Sample from N(0, 1)
-                - other: Zero vector
+            criterion_func: Criterion to maximise, with signature
+                ``func(x, filtr=..., key=...)`` returning values over ``x``.
+            method: One of ``"brute_force"``, ``"gradient_ascent"``, or
+                ``"grid_search"``.
+            filtr: Filter whose belief defines the criterion.
+            params: Method-specific options (e.g. ``lr``, ``max_iters``,
+                ``num_samples``). Defaults to ``{"lr": 1, "max_iters": 50}``.
+            exclude: Set of pool indices that may not be selected (used by
+                ``brute_force`` to select without replacement).
 
         Returns:
-            Tuple (x_opt, crit_value, grads) where:
-                - x_opt: Optimized design of shape (d, 1)
-                - crit_value: Final criterion value
-                - grads: List of gradients at each iteration
-
-        Note:
-            Uses gradient ASCENT (not descent) since we maximize information.
-            Progress displayed via tqdm progress bar.
+            Tuple ``(best_index, x, crit_value)`` where:
+                - ``best_index``: integer pool index for ``brute_force``; the
+                  design vector itself for ``gradient_ascent`` and ``grid_search``
+                - ``x``: the selected design
+                - ``crit_value``: criterion value at the selected design
         """
         if params is None:
             params = {"lr": 1, "max_iters": 50}
@@ -753,12 +758,22 @@ class ExperimentResults:
     selected designs, criterion values, and optimization gradients.
 
     Attributes:
-        rmse_params_values: List of parameter estimation RMSEs per epoch
-        rmse_values: List of prediction RMSEs per epoch
-        designs: Array of selected designs, shape (n_epochs, d, 1)
-        crit_values: List of criterion values for selected designs
-        grad_lists: List of gradient histories from each optimization
-        crit_label: Name of criterion used ("EPIG" or "EIG")
+        sd_glob: List of predictive standard deviations on the global test set per epoch
+        sd_pool: List of predictive standard deviations on the test pool per epoch
+        rmse_glob: List of prediction RMSEs on the global test set per epoch
+        rmse_pool: List of prediction RMSEs on the test pool per epoch
+        selected_designs: List of ``(design, measurement)`` tuples per epoch
+        crit_values: List of criterion values for the selected designs per epoch
+        crit_label: Name of the criterion used (e.g. "EPIG" or "EIG")
+        filter_type: State estimator used ("ekf" or "ukf")
+        design_space: The pool of candidate designs (may be None)
+        filters: List of per-epoch filter snapshots when ``trace=True``
+        data: Dataset container the run operated on
+        selected_indices: List of pool indices selected across epochs
+        rmse_pool_outputs: Per-output RMSE on the test pool per epoch
+        rmse_glob_outputs: Per-output RMSE on the global test set per epoch
+        init_info: Empirical Bayes result when the warm start was followed by
+            empirical Bayes initialisation (otherwise None)
     """
 
     def __init__(
@@ -781,12 +796,20 @@ class ExperimentResults:
         """Initialize metric histories and selected designs.
 
         Args:
-            rmse_params_values: Parameter RMSE values over epochs
-            rmse_values: Prediction RMSE values over epochs
-            designs: Selected designs for each epoch
-            crit_values: Criterion values for each selected design
-            grad_lists: Gradients from each optimization run
-            crit_label: Label for the criterion used
+            sd_glob: Predictive standard deviations on the global test set per epoch.
+            sd_pool: Predictive standard deviations on the test pool per epoch.
+            rmse_global: Prediction RMSEs on the global test set per epoch.
+            rmse_pool: Prediction RMSEs on the test pool per epoch.
+            selected_designs: ``(design, measurement)`` tuples per epoch.
+            crit_values: Criterion values for the selected designs per epoch.
+            data: Dataset container the run operated on.
+            crit_label: Name of the criterion used (default "EPIG").
+            filter_type: State estimator used (default "ekf").
+            design_space: The pool of candidate designs (default None).
+            filters: Per-epoch filter snapshots when ``trace=True`` (default []).
+            selected_indices: Pool indices selected across epochs (default None).
+            rmse_pool_outputs: Per-output RMSE on the test pool (default None).
+            rmse_glob_outputs: Per-output RMSE on the global test set (default None).
         """
         self.sd_glob = sd_glob
         self.sd_pool = sd_pool
