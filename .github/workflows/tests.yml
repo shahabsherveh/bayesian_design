@@ -54,7 +54,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Only run the (multi-minute) suite when the change could affect it. Docs,
+      # config, and meta changes do not exercise library or experiment code, so
+      # the job is skipped for them. The lint job above still runs on every PR.
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - 'experiments/**'
+              - 'conftest.py'
+              - 'pyproject.toml'
+              - 'requirements.txt'
+              - 'requirements-dev.txt'
+
       - name: Set up Python ${{ matrix.python-version }}
+        if: steps.changes.outputs.code == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -62,6 +79,7 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install the package and its dependencies
+        if: steps.changes.outputs.code == 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
@@ -72,9 +90,11 @@ jobs:
           python -m pip install "jax[cpu]"
 
       - name: Show the resolved environment
+        if: steps.changes.outputs.code == 'true'
         run: python -m pip list
 
       - name: Run the test suite
+        if: steps.changes.outputs.code == 'true'
         env:
           MPLBACKEND: Agg
         # The suite is not a smoke test: JAX recompiles per problem construction, so the
