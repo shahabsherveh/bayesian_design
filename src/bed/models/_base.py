@@ -1,5 +1,9 @@
 """Shared measurement-model base class."""
 
+from __future__ import annotations
+
+from typing import Any
+
 
 class Model:
     """
@@ -18,13 +22,16 @@ class Model:
         raise NotImplementedError(
             "Subclasses must implement the jacobian method.")
 
-    def train(self, x_train, y_train, **kwargs):
+    def train(self, x_train, y_train, rngs: Any, epochs: int = 200, learning_rate: float = 0.1, **kwargs):
         """
         Train the model on given data.
 
         Args:
             x_train: Training design matrix of shape (n_samples, n_features)
             y_train: Training observations of shape (n_samples,)
+            rngs: Optional PRNG key/collection for stochastic training.
+            epochs: Number of optimisation epochs.
+            learning_rate: Optimiser step size.
 
         Note:
             This is a placeholder. Subclasses can implement training logic if needed.

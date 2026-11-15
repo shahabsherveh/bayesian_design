@@ -13,6 +13,7 @@ posterior of :mod:`bed.reference`.
 Nothing in a policy sees the truth, the future, or the reference posterior.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import jax
@@ -22,6 +23,7 @@ import numpy as np
 from bed import gaussian_design as gd
 from bed import reference as ref
 from bed.mechanistic import divide_biomarkers, make_divide_problem, make_pkpd_problem
+from bed.models._base import Model
 
 # ---------------------------------------------------------------------------------------------
 # problems
@@ -30,20 +32,20 @@ from bed.mechanistic import divide_biomarkers, make_divide_problem, make_pkpd_pr
 @dataclass
 class DesignProblem:
     name: str
-    model: object
+    model: Model
     X: np.ndarray             # (n, d_x) candidates
     Xt: np.ndarray            # (m, d_x) targets as virtual designs (functionals) or observations
     mu0: np.ndarray           # (d,)
     S0: np.ndarray            # (d, d)
     R: np.ndarray             # (d_y, d_y)
-    Rt: object                # target-side noise: 0.0 (noise-free functional) or (d_t, d_t)
+    Rt: float | np.ndarray    # target-side noise: 0.0 (noise-free functional) or (d_t, d_t)
     z_true: np.ndarray        # (d,)
     replace: bool             # repeated acquisitions allowed
-    target_fn: callable       # samples (N, d) -> target values (N, q) used for the terminal loss
+    target_fn: Callable       # samples (N, d) -> target values (N, q) used for the terminal loss
     target_names: tuple
     truth_targets: np.ndarray = field(init=False)   # (q,)
     meta: dict = field(default_factory=dict)
-    target_scale: np.ndarray = None   # (d_t,) per-output divisor applied to the target model outputs, their Jacobians and ``Rt`` (None: 1)
+    target_scale: np.ndarray | None = None   # (d_t,) per-output divisor applied to the target model outputs, their Jacobians and ``Rt`` (None: 1)
 
     def __post_init__(self):
         self.n = self.X.shape[0]; self.d = self.mu0.size; self.dy = self.R.shape[0]
@@ -54,7 +56,6 @@ class DesignProblem:
             self.target_scale = np.asarray(self.target_scale, dtype=float).reshape(-1)
             if np.ndim(self.Rt):
                 D = np.diag(1.0 / self.target_scale); self.Rt = D @ np.asarray(self.Rt, dtype=float) @ D
-
     def f(self, z, X):
         return np.asarray(self._f(jnp.asarray(z, dtype=float), jnp.asarray(X))).reshape(np.asarray(X).shape[0], self.dy)
 
@@ -291,6 +292,10 @@ class FixedPolicy:
     warm start is drawn per subject) the protocol is executed as its first feasible entries in
     order: an entry already acquired is skipped, so the protocol must be longer than the budget by
     the warm-start size. Raises if it runs out of feasible entries."""
+
+    # Number of warm-start acquisitions preceding this policy's budget; set by
+    # ``run_episode`` from the length of the warm start, 0 when used standalone.
+    _offset: int = 0
 
     def __init__(self, sequence, name="fixed", skip_used=False):
         self.sequence = [int(i) for i in sequence]; self.name = name; self.skip_used = skip_used

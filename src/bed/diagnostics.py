@@ -30,9 +30,9 @@ class Moments:
 
     mean: jnp.ndarray            # (B, d_y)
     cov: jnp.ndarray             # (B, d_y, d_y)
-    mean_prime: jnp.ndarray      # (M, d_y) or None
-    cov_prime: jnp.ndarray       # (M, d_y, d_y) or None
-    cross: jnp.ndarray           # (B, M, d_y, d_y) or None
+    mean_prime: jnp.ndarray | None      # (M, d_y) or None
+    cov_prime: jnp.ndarray | None       # (M, d_y, d_y) or None
+    cross: jnp.ndarray | None           # (B, M, d_y, d_y) or None
 
 
 def _outputs(model, samples, x):
@@ -137,7 +137,8 @@ def moment_errors(approx: Moments, reference: Moments):
         return float(jnp.sqrt(jnp.mean((jnp.asarray(a) - jnp.asarray(b)) ** 2)))
     out = {"mean": rms(approx.mean, reference.mean),
            "var": rms(jnp.diagonal(approx.cov, axis1=-2, axis2=-1), jnp.diagonal(reference.cov, axis1=-2, axis2=-1))}
-    if approx.cross is not None and reference.cross is not None:
+    if approx.cross is not None and reference.cross is not None \
+            and approx.cov_prime is not None and reference.cov_prime is not None:
         out["cov_prime"] = rms(jnp.diagonal(approx.cov_prime, axis1=-2, axis2=-1),
                                jnp.diagonal(reference.cov_prime, axis1=-2, axis2=-1))
         out["cross"] = rms(approx.cross, reference.cross)

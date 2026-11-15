@@ -27,7 +27,7 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
   (JAX recompilation dominates; do not reduce seed/sample counts to speed it up — flaky).
 - **Test (focused):** `pytest tests/<file>.py::<test>`
 - **Lint:** `ruff check src/ tests/ experiments/`
-- **Type:** `ty check src/ --exit-zero-on-warning`
+- **Type:** `ty check src/`
 - **Markdown:** `pymarkdown --config .pymarkdown.json scan`
 - **All fast gates:** `pre-commit run --all-files`
 - **CLI:** `bed list-configs` · `bed experiment --config experiment_0 [--no-plot | --dry-run]`
@@ -52,9 +52,10 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
   deliberate `ruff format` pass is a separate decision, not an incidental change.
 - **Do not weaken the quality bar.** `ruff` clean, `ty` exit 0 (scoped to `src/`; the
   `tests/`/`experiments/` diagnostics are intentionally not gated), `pymarkdown` clean,
-  full `pytest` green. The `ty` gate catches *new* errors; its ~70 `src/` warnings are known
-  typing gaps (attributes attached to dataclasses post-construction, unannotated
-  `self.model`) and must not be papered over with `noqa`/`type: ignore`.
+  full `pytest` green. `src/` has **zero** `ty` diagnostics and `terminal.error-on-warning`
+  is set, so any new diagnostic of any severity fails — do not paper over one with a
+  `noqa`/`ty: ignore`; annotate it. The only configured suppression is
+  `allowed-unresolved-imports` for the optional TensorFlow imports.
 - **`main` is protected.** Direct commits are blocked by the `no-commit-to-branch` hook.
   Work on a short-lived branch (`feat/`, `fix/`, `refactor/`, `chore/`) and merge via PR.
 - **Don't commit run output.** `results/` is gitignored (regenerable, manifests record the
@@ -71,8 +72,8 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
 - `experiment_4`/`experiment_5` configs exist but have **no wrapper script** (unlike 0–3);
   reachable only via `bed experiment --config experiment_4`.
 - `calculate_rmse` averages over the batch (docstring states the batch contract).
-- `ISResult` sets some attributes after construction; several classes leave `self.model`
-  unannotated — this is the source of the 70 `ty` warnings, not bugs.
+- `ISResult` sets some diagnostics after construction; they are now declared as optional
+  fields (no longer the source of `ty` warnings).
 
 ## Orientation & handoff
 

@@ -109,6 +109,8 @@ def map_estimate(model, x, y, prior_mean, prior_cov, noise_cov, z_init=None, res
         r = least_squares(resid, z0, jac=jacr, method="lm", ftol=ftol, xtol=xtol, max_nfev=max_nfev)
         if best is None or r.cost < best.cost:
             best = r
+    if best is None:
+        raise ValueError("starts must contain at least one starting point")
     Jw = jacr(best.x)
     cov = np.linalg.inv(Jw.T @ Jw)
     return best.x, cov

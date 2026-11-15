@@ -22,6 +22,8 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.stats import multivariate_t
 
+from bed.models._base import Model
+
 
 def whitening(R):
     """``W`` with ``r^T R^{-1} r = ||W r||²`` (``W = chol(R^{-1})^T``)."""
@@ -32,7 +34,7 @@ def whitening(R):
 @dataclass
 class Posterior:
     """Everything needed to evaluate the unnormalised log posterior and its whitened residuals."""
-    model: object
+    model: Model
     X: np.ndarray            # (k, ..., d_x) designs, as the model expects
     Y: np.ndarray            # (k, d_y)
     mu0: np.ndarray          # (d,)
@@ -81,6 +83,8 @@ def map_laplace(post, z_inits, ftol=1e-10, xtol=1e-10, max_nfev=5000):
         record.append({"cost": float(r.cost), "success": bool(r.success), "nfev": int(r.nfev)})
         if best is None or r.cost < best.cost:
             best = r
+    if best is None:
+        raise ValueError("z_inits must contain at least one starting point")
     Jw = post.jac(best.x); cov = np.linalg.inv(Jw.T @ Jw); cov = (cov + cov.T) / 2
     w, V = np.linalg.eigh(cov)
     if w.min() <= 1e-9 * w.max():                     # an ill-conditioned Gauss-Newton matrix: project onto the PD cone and record it
@@ -118,6 +122,21 @@ class ISResult:
     max_weight: float
     khat: float
     map_record: list
+    # Diagnostics attached after construction by ``robust_posterior`` and its escalation
+    # stages. They are optional metadata: a bare ``importance_posterior`` result carries
+    # none of them, so ``diagnostics()`` reads them defensively. Declaring them here makes
+    # the contract explicit and checkable rather than implicit.
+    method: str | None = None
+    rhat_max: float | None = None
+    ess_bulk_min: float | None = None
+    ess_tail_min: float | None = None
+    accept: float | None = None
+    mcmc_steps: int | None = None
+    mcmc_chains: int | None = None
+    reliable: bool | None = None
+    stages: list[dict] | None = None
+    thresholds: dict | None = None
+    dropped_mass: float | None = None
 
     def moments(self, fn):
         """Weighted mean and variance of ``fn(samples)`` (``fn`` maps ``(N, d)`` to ``(N, q)``)."""

@@ -7,6 +7,8 @@ experimental design problems and optimization strategies.
 
 import copy as _copy
 
+from .models._base import Model
+
 
 class Experiment:
     """
@@ -135,6 +137,9 @@ class FilterSnapshotMixin:
     # Attributes copied into a snapshot. ``model`` is deliberately excluded: it is
     # shared because it is immutable for the duration of a run.
     _snapshot_copied_attrs: tuple[str, ...] = ("state_prior", "measurement_error")
+
+    # Set by the concrete filter, and deliberately shared (not copied) into a snapshot.
+    model: Model
 
     def snapshot(self):
         """Return a cheap copy sharing ``model`` and copying the recorded belief."""

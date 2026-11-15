@@ -64,19 +64,18 @@ ignore = [
 [tool.ty.environment]
 python-version = "3.12"
 
+[tool.ty.analysis]
+# TensorFlow is imported lazily inside get_mnist_data and is optional for the synthetic
+# experiments (it is not installed in the standard dev environment), so an unresolvable
+# import of it is expected rather than a defect. Suppressing it by module name is
+# narrower than downgrading the whole import-not-found rule.
+allowed-unresolved-imports = ["tensorflow", "tensorflow_datasets"]
+
 [tool.ty.rules]
-# The codebase is untyped in places (attributes attached to dataclasses after construction,
-# unannotated self.model), so these are downgraded to warnings. The CI step runs
-# `ty check src/ --exit-zero-on-warning`, so only error-level diagnostics fail the build.
-missing-attribute = "warn"
-missing-union-attribute = "warn"
-invalid-argument-type = "warn"
-no-matching-overload = "warn"
-invalid-type-form = "warn"
-invalid-assignment = "warn"
-not-callable = "warn"
-invalid-parameter-default = "warn"
-incompatible-method-override = "warn"
-# TensorFlow is imported lazily inside get_mnist_data and is optional for the
-# synthetic experiments, so it is not a hard requirement to resolve.
-import-not-found = "warn"
+# Every rule stays at its default severity. Left explicit so it is obvious that the gate
+# is not downgrading anything: a new diagnostic of any severity fails the check below.
+
+[tool.ty.terminal]
+# Warnings fail the gate. Without this, ty exits 0 when the only diagnostics are
+# warnings, which is how the previous ~70-warning baseline stayed green.
+error-on-warning = true
