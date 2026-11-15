@@ -129,3 +129,41 @@ def test_ekf_and_ukf_agree_with_the_runner_criterion_values_on_a_linear_model():
     for criterion in ("EPIG", "EIG"):
         assert np.allclose(np.asarray(d["ekf"][criterion].crit_values, dtype=float),
                            np.asarray(d["ukf"][criterion].crit_values, dtype=float), rtol=1e-8, atol=1e-10)
+
+
+@pytest.mark.parametrize("method", ["brute_force", "grid_search", "gradient_ascent"])
+def test_optimize_returns_a_pool_index_and_that_design(method):
+    exp = _make_experiment()
+    filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+    best_index, x, crit_value = exp.optimize(
+        criterion_func=exp.calculate_epig, method=method, filtr=filt,
+        params={"num_samples": 8, "max_iters": 3, "lr": 0.1})
+    assert jnp.issubdtype(jnp.asarray(best_index).dtype, jnp.integer), method
+    assert jnp.allclose(x, exp.design_space[int(best_index)]), method
+    assert np.isfinite(float(crit_value)), method
+
+
+@pytest.mark.parametrize("method", ["brute_force", "grid_search", "gradient_ascent"])
+def test_optimize_respects_exclude_for_every_method(method):
+    exp = _make_experiment()
+    filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+    keep = NUM_TRAIN - 1
+    exclude = set(range(NUM_TRAIN)) - {keep}
+    best_index, _, _ = exp.optimize(
+        criterion_func=exp.calculate_epig, method=method, filtr=filt,
+        params={"num_samples": 8, "max_iters": 3, "lr": 0.1}, exclude=exclude)
+    assert int(best_index) == keep, method
+
+
+def test_grid_search_run_records_pool_indices_each_epoch():
+    exp = _make_experiment(warm_start=2)
+    result = exp.run_experiment(
+        criteria=["EPIG"], filter_types=["ekf"], filter_params=[{}],
+        iterations=3, optimizer_method="grid_search") \
+        .experiment_results_dict["ekf"]["EPIG"]
+    assert len(result.selected_indices) == 3
+    assert len(set(result.selected_indices)) == 3, "grid_search re-selected a design"
+    for design, _ in result.selected_designs:
+        assert any(np.allclose(np.asarray(design), np.asarray(pool_point))
+                   for pool_point in np.asarray(exp.design_space)), \
+            "selected design is not a pool point"
