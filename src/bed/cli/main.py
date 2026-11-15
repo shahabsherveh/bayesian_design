@@ -14,6 +14,7 @@ CONFIG_DIR = Path(__file__).resolve().parents[3] / "experiments" / "configs"
 def _load_config(config: str) -> dict:
     """Load a named bundled TOML config or an explicit config path."""
     import tomllib
+
     config_path = Path(config)
     if not config_path.exists():
         config_path = CONFIG_DIR / f"{config}.toml"
@@ -34,6 +35,7 @@ def _build_model(model_cfg: dict):
     from flax import nnx
 
     from bed.models import CNN, DenseNN, LinearNN, NeuralNetworkClassifier, NeuralNetworkRegressor
+
     model_type = model_cfg["type"]
     seed = model_cfg.get("seed", 0)
     if model_type == "LinearNN":
@@ -45,14 +47,11 @@ def _build_model(model_cfg: dict):
             hidden_dims=model_cfg["hidden_dims"],
             output_dim=model_cfg["output_dim"],
             rngs=nnx.Rngs(seed),
-            activation=model_cfg.get(
-                "activations", model_cfg.get("activation", "gelu")
-            ),
+            activation=model_cfg.get("activations", model_cfg.get("activation", "gelu")),
         )
         if model_cfg.get("random_weights", False):
             scale = model_cfg.get("random_weights_scale", 1)
-            z = scale * jax.random.normal(key=jax.random.key(seed),
-                                          shape=(model.weight_size, 1))
+            z = scale * jax.random.normal(key=jax.random.key(seed), shape=(model.weight_size, 1))
             state = model.weights_to_state(z)
             nnx.update(model, state)
         wrapper = NeuralNetworkRegressor(model)
@@ -76,9 +75,9 @@ def _build_empirical_bayes(eb_cfg: dict):
 def _build_latent_cov(model, latent_cfg: dict):
     """Construct the latent covariance matrix requested by configuration."""
     import jax.numpy as jnp
+
     cov_type = latent_cfg["type"]
-    allowed = {"scaled_identity": {"type", "scale"},
-               "he_diagonal": {"type", "bias_var", "kernel_scale"}}
+    allowed = {"scaled_identity": {"type", "scale"}, "he_diagonal": {"type", "bias_var", "kernel_scale"}}
     if cov_type not in allowed:
         raise ValueError(f"Unsupported latent covariance type: {cov_type}")
     unknown = sorted(set(latent_cfg) - allowed[cov_type])
@@ -121,6 +120,7 @@ def _build_data(data_cfg: dict, model_cfg: dict | None = None, truth_cfg: dict |
         create_synthetic_skewnormal_mixture_data_1D,
         get_mnist_data,
     )
+
     kind = data_cfg["kind"]
     if kind == "mnist":
         return get_mnist_data(
@@ -130,7 +130,7 @@ def _build_data(data_cfg: dict, model_cfg: dict | None = None, truth_cfg: dict |
         )
     if kind == "uci":
         dataset = data_cfg["name"]
-        test_size = data_cfg['test_size']
+        test_size = data_cfg["test_size"]
         return get_uci_data(
             dataset=dataset,
             test_size=test_size,
@@ -140,8 +140,7 @@ def _build_data(data_cfg: dict, model_cfg: dict | None = None, truth_cfg: dict |
     outcome_cfg = data_cfg.get("outcome_model")
     if outcome_cfg is None:
         if model_cfg is None:
-            raise ValueError(
-                "Synthetic data needs [data.outcome_model] or a [model] config to copy.")
+            raise ValueError("Synthetic data needs [data.outcome_model] or a [model] config to copy.")
         outcome_cfg = dict(model_cfg)
         truth_cfg = truth_cfg or {}
         if truth_cfg.get("enabled", True):
@@ -172,11 +171,7 @@ def _build_data(data_cfg: dict, model_cfg: dict | None = None, truth_cfg: dict |
             num_test=data_cfg["num_test"],
             num_val=data_cfg.get("num_val", 0),
             measurement_noise_std=data_cfg.get("measurement_noise_std", 0.1),
-            extra_points=(
-                jnp.array(data_cfg["extra_points"])
-                if "extra_points" in data_cfg
-                else None
-            ),
+            extra_points=(jnp.array(data_cfg["extra_points"]) if "extra_points" in data_cfg else None),
             key=jax.random.PRNGKey(data_cfg.get("seed", 0)),
             skew=data_cfg.get("skew", 0.0),
         )
@@ -189,11 +184,7 @@ def _build_data(data_cfg: dict, model_cfg: dict | None = None, truth_cfg: dict |
             num_test=data_cfg["num_test"],
             num_val=data_cfg.get("num_val", 0),
             measurement_noise_std=data_cfg.get("measurement_noise_std", 0.1),
-            extra_points=(
-                jnp.array(data_cfg["extra_points"])
-                if "extra_points" in data_cfg
-                else None
-            ),
+            extra_points=(jnp.array(data_cfg["extra_points"]) if "extra_points" in data_cfg else None),
             key=jax.random.PRNGKey(data_cfg.get("seed", 0)),
             skews=data_cfg.get("skews"),
         )
@@ -218,9 +209,9 @@ def run_experiment_from_config(
     from jax import numpy as jnp
 
     from bed.experiments import Experiment
+
     cfg = _load_config(config)
-    jax.config.update("jax_enable_x64", cfg.get(
-        "runtime", {}).get("x64", True))
+    jax.config.update("jax_enable_x64", cfg.get("runtime", {}).get("x64", True))
 
     model, wrapped_model = _build_model(cfg["model"])
     latent_cov = _build_latent_cov(model, cfg["latent_cov"])
@@ -233,9 +224,8 @@ def run_experiment_from_config(
     }
 
     measurement_cfg = cfg["measurement_error"]
-    measurement_error = measurement_cfg["variance"] * \
-        jnp.eye(measurement_cfg["dim"])
-    warm_start = cfg["run"].get('warm_start', 10)
+    measurement_error = measurement_cfg["variance"] * jnp.eye(measurement_cfg["dim"])
+    warm_start = cfg["run"].get("warm_start", 10)
     seed = cfg["run"].get("seed", 0)
     if dry_run:
         return {
@@ -245,7 +235,7 @@ def run_experiment_from_config(
             "design_pool_size": int(data.x_train.shape[0] + data.x_test.shape[0]),
             "strategies": strategies or cfg["run"]["strategies"],
             "iterations": iterations or cfg["run"]["iterations"],
-            "warm_start": warm_start
+            "warm_start": warm_start,
         }
 
     experiment = Experiment(
@@ -264,21 +254,19 @@ def run_experiment_from_config(
 
     run_cfg = cfg["run"]
     filter_type = cfg["experiment"].get("filter_type", ["ekf"])
-    filter_types = [filter_type] if isinstance(
-        filter_type, str) else filter_type
+    filter_types = [filter_type] if isinstance(filter_type, str) else filter_type
     filter_params = cfg["experiment"].get("filter_params", [{}])
     if isinstance(filter_params, dict):
         filter_params = [filter_params]
-    trace = cfg["experiment"].get('trace', False)
+    trace = cfg["experiment"].get("trace", False)
     results = experiment.run_experiment(
         criteria=strategies or run_cfg["strategies"],
         iterations=iterations or run_cfg["iterations"],
         optimizer_method=run_cfg.get("optimizer_method", "brute_force"),
-        optimizer_params=run_cfg.get(
-            "optimizer_params", {"lr": 1, "max_iters": 50}),
+        optimizer_params=run_cfg.get("optimizer_params", {"lr": 1, "max_iters": 50}),
         filter_types=filter_types,
         filter_params=filter_params,
-        trace=trace
+        trace=trace,
     )
     # if show_plot:
     #     results.plot_comparison()
@@ -319,19 +307,11 @@ def experiment(
         "--strategies",
         help="Comma-separated strategy list (e.g. EPIG,EIG,EPIG-MC,RANDOM).",
     ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Validate config and print execution summary."
-    ),
-    no_plot: bool = typer.Option(
-        False, "--no-plot", help="Do not display experiment plots."
-    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate config and print execution summary."),
+    no_plot: bool = typer.Option(False, "--no-plot", help="Do not display experiment plots."),
 ):
     """Run an experiment from a TOML configuration file."""
-    strategy_list = (
-        [s.strip() for s in strategies.split(",") if s.strip()]
-        if strategies is not None
-        else None
-    )
+    strategy_list = [s.strip() for s in strategies.split(",") if s.strip()] if strategies is not None else None
     result = run_experiment_from_config(
         config=config,
         iterations=iterations,

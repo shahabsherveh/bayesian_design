@@ -37,16 +37,7 @@ class EKF(FilterSnapshotMixin):
         measurement_error: Measurement noise covariance R
     """
 
-    def __init__(
-        self,
-        model: Model,
-        state_prev,
-        state_cov_prev,
-        state_innovation,
-        measurement_error,
-        *arg,
-        **kwargs
-    ):
+    def __init__(self, model: Model, state_prev, state_cov_prev, state_innovation, measurement_error, *arg, **kwargs):
         """
         Initialize Extended Kalman Filter.
 
@@ -64,9 +55,7 @@ class EKF(FilterSnapshotMixin):
         # Note 13: In Bayesian terms, the prior mean/covariance summarizes all
         # Note 14: current uncertainty before we see a new measurement.
         self.model = model
-        self.state_prior = self._get_state_prior(
-            state_prev, state_cov_prev, state_innovation
-        )
+        self.state_prior = self._get_state_prior(state_prev, state_cov_prev, state_innovation)
         self.measurement_error = measurement_error
 
     @staticmethod
@@ -89,8 +78,7 @@ class EKF(FilterSnapshotMixin):
         # Note 17: In a more general discretized state-space model, this step
         # Note 18: would use a system transition matrix or nonlinear dynamics.
         mean = state_prev
-        cov = state_cov_prev + state_innovation * \
-            jnp.eye(state_cov_prev.shape[0])
+        cov = state_cov_prev + state_innovation * jnp.eye(state_cov_prev.shape[0])
         return mean, cov
 
     def get_state_posterior(self, measurement, x):
@@ -129,9 +117,7 @@ class EKF(FilterSnapshotMixin):
         # Note 26: The Joseph form below is numerically more stable and keeps
         # Note 27: the posterior covariance symmetric and positive semidefinite.
         # cov_post = (F @ self.state_prior[1]).squeeze(0)
-        cov_post = (
-            F @ self.state_prior[1] @ FT + K @ self.measurement_error @ KT
-        ).squeeze(0)
+        cov_post = (F @ self.state_prior[1] @ FT + K @ self.measurement_error @ KT).squeeze(0)
         return mean_post, cov_post
 
     def measurement_prior(self, x):
@@ -201,8 +187,7 @@ class EKF(FilterSnapshotMixin):
         H_obs_T = jnp.matrix_transpose(H_obs)
         H_pred = self.model.jacobian(self.state_prior[0], x_pred)
         cov_cross = H_pred @ self.state_prior[1] @ H_obs_T
-        cov_cross_T = cov_cross.T if cov_cross.ndim == 2 else cov_cross.swapaxes(
-            1, 2)
+        cov_cross_T = cov_cross.T if cov_cross.ndim == 2 else cov_cross.swapaxes(1, 2)
         K = cov_cross @ jnp.linalg.inv(meas_prior_obs[1])
         cov_meas_pos = meas_prior_pred[1] - K @ cov_cross_T
         return cov_meas_pos
@@ -224,8 +209,7 @@ class EKF(FilterSnapshotMixin):
         # Note 40: Mutual information measures the expected reduction in entropy.
         # Note 41: If the predictive uncertainty drops a lot after measuring at x_obs,
         # Note 42: the design is informative for learning about x_pred.
-        cov_pos_estimate = self.measurement_posterior_cov_estimate(
-            x_pred, x_obs)
+        cov_pos_estimate = self.measurement_posterior_cov_estimate(x_pred, x_obs)
         cov_prior = self.measurement_prior(x_pred)[1]
         prior = multivariate_normal(cov=cov_prior)
         posterior = multivariate_normal(cov=cov_pos_estimate)
@@ -319,8 +303,7 @@ class EKF(FilterSnapshotMixin):
         s_x_inv = jnp.linalg.inv(s_x[:, None, ...])
         # Note 57: This matrix captures the reduction in uncertainty for the
         # Note 58: candidate measurement after conditioning on the current design.
-        posterior_covs_deficit = j_1 @ sigma @ (
-            j_0_T @ s_x_inv @ j_0) @ sigma @ j_1_T
+        posterior_covs_deficit = j_1 @ sigma @ (j_0_T @ s_x_inv @ j_0) @ sigma @ j_1_T
         cov_0 = j_1 @ sigma @ j_1_T + self.measurement_error
 
         # Note 59: The Gaussian entropy formula yields a log-determinant term.
@@ -330,8 +313,7 @@ class EKF(FilterSnapshotMixin):
         epig = (
             -jnp.log(
                 jnp.linalg.det(
-                    jnp.eye(self.measurement_error.shape[0])
-                    - posterior_covs_deficit @ jnp.linalg.inv(cov_0)
+                    jnp.eye(self.measurement_error.shape[0]) - posterior_covs_deficit @ jnp.linalg.inv(cov_0)
                 )
             )
             / 2

@@ -1,4 +1,5 @@
 """End-to-end tests of the sequential runner on a small linear problem (fast, CPU only)."""
+
 from copy import deepcopy
 
 import jax
@@ -23,24 +24,37 @@ NOISE_VAR = 0.05
 def _make_experiment(seed=0, warm_start=3):
     flax_model = LinearNN(input_dim=INPUT_DIM, rngs=nnx.Rngs(0))
     truth = deepcopy(flax_model)
-    nnx.update(truth, truth.weights_to_state(
-        jax.random.normal(jax.random.PRNGKey(1234), (flax_model.weight_size, 1))))
+    nnx.update(truth, truth.weights_to_state(jax.random.normal(jax.random.PRNGKey(1234), (flax_model.weight_size, 1))))
     data = create_synthetic_data(
-        truth, num_train=NUM_TRAIN, num_test=NUM_POOL, input_dim=INPUT_DIM, embedding_dim=1,
-        embedding_noise_std=0.1, measurement_noise_std=NOISE_VAR**0.5, key=jax.random.PRNGKey(0),
+        truth,
+        num_train=NUM_TRAIN,
+        num_test=NUM_POOL,
+        input_dim=INPUT_DIM,
+        embedding_dim=1,
+        embedding_noise_std=0.1,
+        measurement_noise_std=NOISE_VAR**0.5,
+        key=jax.random.PRNGKey(0),
     )
     return Experiment(
-        model=NeuralNetworkRegressor(flax_model), data=data,
-        latent_cov=0.5 * jnp.eye(flax_model.weight_size), latent_innovation=0.0,
-        measurement_error=NOISE_VAR * jnp.eye(1), warm_start=warm_start, seed=seed,
+        model=NeuralNetworkRegressor(flax_model),
+        data=data,
+        latent_cov=0.5 * jnp.eye(flax_model.weight_size),
+        latent_innovation=0.0,
+        measurement_error=NOISE_VAR * jnp.eye(1),
+        warm_start=warm_start,
+        seed=seed,
     )
 
 
 def _run(seed=0, criteria=("EPIG", "EIG", "RANDOM"), iterations=6, filter_types=("ekf", "ukf")):
     exp = _make_experiment(seed=seed)
-    return exp.run_experiment(criteria=list(criteria), filter_types=list(filter_types),
-                              filter_params=[{}] * len(filter_types), iterations=iterations,
-                              optimizer_method="brute_force")
+    return exp.run_experiment(
+        criteria=list(criteria),
+        filter_types=list(filter_types),
+        filter_params=[{}] * len(filter_types),
+        iterations=iterations,
+        optimizer_method="brute_force",
+    )
 
 
 def test_selection_is_without_replacement_and_excludes_the_warm_start():
@@ -53,7 +67,9 @@ def test_selection_is_without_replacement_and_excludes_the_warm_start():
             picked = by_criterion[criterion].selected_indices
             assert len(picked) == 6
             assert len(set(picked)) == len(picked), f"{filter_type}/{criterion} re-selected a design"
-            assert not set(picked) & set(warm.selected_indices), f"{filter_type}/{criterion} re-selected a warm-start design"
+            assert not set(picked) & set(warm.selected_indices), (
+                f"{filter_type}/{criterion} re-selected a warm-start design"
+            )
 
 
 def test_warm_start_is_shared_across_filters_and_runs_are_reproducible():
@@ -63,7 +79,10 @@ def test_warm_start_is_shared_across_filters_and_runs_are_reproducible():
     for filter_type in ("ekf", "ukf"):
         for criterion in ("EPIG", "EIG", "RANDOM"):
             assert d1[filter_type][criterion].selected_indices == d2[filter_type][criterion].selected_indices
-    assert _run(seed=4).experiment_results_dict["ekf"]["WARM-START"].selected_indices != d1["ekf"]["WARM-START"].selected_indices
+    assert (
+        _run(seed=4).experiment_results_dict["ekf"]["WARM-START"].selected_indices
+        != d1["ekf"]["WARM-START"].selected_indices
+    )
 
 
 def test_ekf_and_ukf_select_the_same_designs_on_a_linear_model():
@@ -72,8 +91,12 @@ def test_ekf_and_ukf_select_the_same_designs_on_a_linear_model():
     d = _run().experiment_results_dict
     for criterion in ("EPIG", "EIG"):
         assert d["ekf"][criterion].selected_indices == d["ukf"][criterion].selected_indices
-        assert np.allclose(np.asarray(d["ekf"][criterion].rmse_pool, dtype=float),
-                           np.asarray(d["ukf"][criterion].rmse_pool, dtype=float), rtol=1e-8, atol=1e-10)
+        assert np.allclose(
+            np.asarray(d["ekf"][criterion].rmse_pool, dtype=float),
+            np.asarray(d["ukf"][criterion].rmse_pool, dtype=float),
+            rtol=1e-8,
+            atol=1e-10,
+        )
 
 
 def test_epig_reduces_pool_uncertainty():
@@ -89,7 +112,8 @@ def test_run_experiment_with_default_arguments():
     # EPIG-MC is deliberately not a default: its nested Monte Carlo estimate is far
     # more expensive than the closed-form criteria, so it must be opted into.
     results = _make_experiment().run_experiment(
-        iterations=1, filter_types=["ekf"], filter_params=[{}], optimizer_method="brute_force")
+        iterations=1, filter_types=["ekf"], filter_params=[{}], optimizer_method="brute_force"
+    )
     by_criterion = results.experiment_results_dict["ekf"]
     assert set(by_criterion) == {"WARM-START", "EPIG", "EIG", "RANDOM"}
 
@@ -113,8 +137,9 @@ def test_monte_carlo_epig_runs_and_tracks_the_closed_form():
     filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
     x = exp.design_space[:5]
     closed = np.asarray(exp.calculate_epig(x, filt), dtype=float)
-    estimates = np.stack([np.asarray(exp.calculate_epig_mc(x, filt, num_latent_samples=2000), dtype=float)
-                          for _ in range(20)])
+    estimates = np.stack(
+        [np.asarray(exp.calculate_epig_mc(x, filt, num_latent_samples=2000), dtype=float) for _ in range(20)]
+    )
     assert np.all(np.isfinite(estimates))
     mean, sem = estimates.mean(axis=0), estimates.std(axis=0, ddof=1) / np.sqrt(len(estimates))
     # nested Monte Carlo is biased at finite sample size; require agreement within the
@@ -127,8 +152,12 @@ def test_monte_carlo_epig_runs_and_tracks_the_closed_form():
 def test_ekf_and_ukf_agree_with_the_runner_criterion_values_on_a_linear_model():
     d = _run(iterations=4).experiment_results_dict
     for criterion in ("EPIG", "EIG"):
-        assert np.allclose(np.asarray(d["ekf"][criterion].crit_values, dtype=float),
-                           np.asarray(d["ukf"][criterion].crit_values, dtype=float), rtol=1e-8, atol=1e-10)
+        assert np.allclose(
+            np.asarray(d["ekf"][criterion].crit_values, dtype=float),
+            np.asarray(d["ukf"][criterion].crit_values, dtype=float),
+            rtol=1e-8,
+            atol=1e-10,
+        )
 
 
 @pytest.mark.parametrize("method", ["brute_force", "grid_search", "gradient_ascent"])
@@ -136,8 +165,11 @@ def test_optimize_returns_a_pool_index_and_that_design(method):
     exp = _make_experiment()
     filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
     best_index, x, crit_value = exp.optimize(
-        criterion_func=exp.calculate_epig, method=method, filtr=filt,
-        params={"num_samples": 8, "max_iters": 3, "lr": 0.1})
+        criterion_func=exp.calculate_epig,
+        method=method,
+        filtr=filt,
+        params={"num_samples": 8, "max_iters": 3, "lr": 0.1},
+    )
     assert jnp.issubdtype(jnp.asarray(best_index).dtype, jnp.integer), method
     assert jnp.allclose(x, exp.design_space[int(best_index)]), method
     assert np.isfinite(float(crit_value)), method
@@ -150,31 +182,33 @@ def test_optimize_respects_exclude_for_every_method(method):
     keep = NUM_TRAIN - 1
     exclude = set(range(NUM_TRAIN)) - {keep}
     best_index, _, _ = exp.optimize(
-        criterion_func=exp.calculate_epig, method=method, filtr=filt,
-        params={"num_samples": 8, "max_iters": 3, "lr": 0.1}, exclude=exclude)
+        criterion_func=exp.calculate_epig,
+        method=method,
+        filtr=filt,
+        params={"num_samples": 8, "max_iters": 3, "lr": 0.1},
+        exclude=exclude,
+    )
     assert int(best_index) == keep, method
 
 
 def test_grid_search_run_records_pool_indices_each_epoch():
     exp = _make_experiment(warm_start=2)
     result = exp.run_experiment(
-        criteria=["EPIG"], filter_types=["ekf"], filter_params=[{}],
-        iterations=3, optimizer_method="grid_search") \
-        .experiment_results_dict["ekf"]["EPIG"]
+        criteria=["EPIG"], filter_types=["ekf"], filter_params=[{}], iterations=3, optimizer_method="grid_search"
+    ).experiment_results_dict["ekf"]["EPIG"]
     assert len(result.selected_indices) == 3
     assert len(set(result.selected_indices)) == 3, "grid_search re-selected a design"
     for design, _ in result.selected_designs:
-        assert any(np.allclose(np.asarray(design), np.asarray(pool_point))
-                   for pool_point in np.asarray(exp.design_space)), \
-            "selected design is not a pool point"
+        assert any(
+            np.allclose(np.asarray(design), np.asarray(pool_point)) for pool_point in np.asarray(exp.design_space)
+        ), "selected design is not a pool point"
 
 
 def test_run_uses_a_local_generator_and_does_not_rebind_the_instance_rng():
     exp = _make_experiment()
     filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
     before = exp._rng
-    exp.run("RANDOM", "ekf", {}, filt, epochs=3, optimizer="brute_force",
-            rng=np.random.default_rng(123))
+    exp.run("RANDOM", "ekf", {}, filt, epochs=3, optimizer="brute_force", rng=np.random.default_rng(123))
     # An explicit rng must not replace the instance's default generator.
     assert exp._rng is before
 
@@ -196,8 +230,9 @@ def test_explicit_rng_makes_a_run_reproducible():
     def run_once():
         exp = _make_experiment()
         filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
-        return exp.run("RANDOM", "ekf", {}, filt, epochs=4, optimizer="brute_force",
-                       rng=np.random.default_rng(99)).selected_indices
+        return exp.run(
+            "RANDOM", "ekf", {}, filt, epochs=4, optimizer="brute_force", rng=np.random.default_rng(99)
+        ).selected_indices
 
     assert run_once() == run_once()
 
@@ -237,15 +272,20 @@ def test_snapshot_is_a_usable_filter(filter_cls):
     mean_post, cov_post = snap.get_state_posterior(measurement, design)
     assert mean_post is not None and cov_post is not None
     from copy import deepcopy as _dc
+
     assert _dc(snap) is not snap
 
 
 def test_trace_records_snapshots_that_do_not_copy_the_model():
     exp = _make_experiment()
     result = exp.run_experiment(
-        criteria=["EPIG"], filter_types=["ekf"], filter_params=[{}],
-        iterations=3, optimizer_method="brute_force", trace=True) \
-        .experiment_results_dict["ekf"]["EPIG"]
+        criteria=["EPIG"],
+        filter_types=["ekf"],
+        filter_params=[{}],
+        iterations=3,
+        optimizer_method="brute_force",
+        trace=True,
+    ).experiment_results_dict["ekf"]["EPIG"]
     assert len(result.filters) == 3
     # Every traced filter shares one model object rather than cloning it per epoch.
     models = {id(f.model) for f in result.filters}

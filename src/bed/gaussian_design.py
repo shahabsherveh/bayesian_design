@@ -25,6 +25,7 @@ import numpy as np
 # covariance algebra
 # ---------------------------------------------------------------------------------------------
 
+
 def _sym(S):
     return (S + S.T) / 2
 
@@ -53,16 +54,18 @@ def _stack(J, idx):
 def kalman_update(S, J, R):
     """Posterior covariance after observing the stacked design(s) with Jacobian ``J`` ``(q, d)`` and
     noise covariance ``R`` ``(q, q)``: ``S - S J^T (J S J^T + R)^{-1} J S``, symmetrised."""
-    J = np.asarray(J, dtype=float).reshape(-1, S.shape[0]); R = np.atleast_2d(np.asarray(R, dtype=float))
+    J = np.asarray(J, dtype=float).reshape(-1, S.shape[0])
+    R = np.atleast_2d(np.asarray(R, dtype=float))
     Sx = J @ S @ J.T + R
-    K = np.linalg.solve(Sx, J @ S).T          # S J^T Sx^{-1}
+    K = np.linalg.solve(Sx, J @ S).T  # S J^T Sx^{-1}
     return _sym(S - K @ J @ S)
 
 
 def information_update(S, J, R):
     """The same posterior covariance in information form, ``(S^{-1} + J^T R^{-1} J)^{-1}``; used
     to cross-check :func:`kalman_update`."""
-    J = np.asarray(J, dtype=float).reshape(-1, S.shape[0]); R = np.atleast_2d(np.asarray(R, dtype=float))
+    J = np.asarray(J, dtype=float).reshape(-1, S.shape[0])
+    R = np.atleast_2d(np.asarray(R, dtype=float))
     return _sym(np.linalg.inv(np.linalg.inv(S) + J.T @ np.linalg.solve(R, J)))
 
 
@@ -86,6 +89,7 @@ def gaussian_mi(Sxx, Syy, Cyx):
 # per-candidate scores
 # ---------------------------------------------------------------------------------------------
 
+
 def predictive_cov(J, S, R):
     """``(n, d_y, d_y)`` predictive covariances ``J_i S J_i^T + R``."""
     return np.einsum("nid,de,nje->nij", J, S, J) + np.atleast_2d(np.asarray(R, dtype=float))
@@ -96,14 +100,16 @@ def epig_scores(J, Jt, S, R, Rt=0.0):
     with ``S_x = J_i S J_i^T + R``, ``S'_j = Jt_j S Jt_j^T + Rt`` and ``C_j = Jt_j S J_i^T``. ``Rt``
     may be ``0`` (noise-free targets): the Schur complement stays positive definite as long as the
     prior target covariance is, because ``S_x ≻ 0``."""
-    J = np.asarray(J, dtype=float); Jt = np.asarray(Jt, dtype=float); S = np.asarray(S, dtype=float)
-    Sx = predictive_cov(J, S, R)                                       # (n, dy, dy)
-    Sp = np.einsum("mid,de,mje->mij", Jt, S, Jt)                       # (m, dt, dt)
+    J = np.asarray(J, dtype=float)
+    Jt = np.asarray(Jt, dtype=float)
+    S = np.asarray(S, dtype=float)
+    Sx = predictive_cov(J, S, R)  # (n, dy, dy)
+    Sp = np.einsum("mid,de,mje->mij", Jt, S, Jt)  # (m, dt, dt)
     if np.ndim(Rt) or Rt != 0.0:
         Sp = Sp + np.atleast_2d(np.asarray(Rt, dtype=float))
-    C = np.einsum("mid,de,nje->mnij", Jt, S, J)                        # (m, n, dt, dy)
+    C = np.einsum("mid,de,nje->mnij", Jt, S, J)  # (m, n, dt, dy)
     Sx_inv = np.linalg.inv(Sx)
-    red = np.einsum("mnij,njk,mnlk->mnil", C, Sx_inv, C)               # C Sx^{-1} C^T
+    red = np.einsum("mnij,njk,mnlk->mnil", C, Sx_inv, C)  # C Sx^{-1} C^T
     post = Sp[:, None] - red
     return 0.5 * (_logdet(Sp)[:, None] - _logdet(post)).mean(axis=0)
 
@@ -130,13 +136,15 @@ def variance_reduction_scores(J, Jt, S, R, Rt=0.0):
     """Loss-based score per candidate: the reduction in :func:`target_variance` (summed over
     targets) that observing the candidate once would give. The prediction-loss-matched
     variance-reduction baseline of the brief."""
-    J = np.asarray(J, dtype=float); base = target_variance(S, Jt, Rt)
+    J = np.asarray(J, dtype=float)
+    base = target_variance(S, Jt, Rt)
     return np.array([base - target_variance(kalman_update(S, J[i], R), Jt, Rt) for i in range(J.shape[0])])
 
 
 # ---------------------------------------------------------------------------------------------
 # set (batch) utilities: the whole set observed jointly
 # ---------------------------------------------------------------------------------------------
+
 
 def set_epig(idx, J, Jt, S, R, Rt=0.0, joint=False):
     """EPIG of the set ``idx`` observed jointly: ``mean_j I(Y_idx; y'_j)`` (``joint=False``, the
@@ -146,8 +154,10 @@ def set_epig(idx, J, Jt, S, R, Rt=0.0, joint=False):
     idx = list(idx)
     if not idx:
         return 0.0
-    S = np.asarray(S, dtype=float); Jt = np.asarray(Jt, dtype=float)
-    Jset = _stack(J, idx); Rset = _block_diag(R, len(idx))
+    S = np.asarray(S, dtype=float)
+    Jt = np.asarray(Jt, dtype=float)
+    Jset = _stack(J, idx)
+    Rset = _block_diag(R, len(idx))
     Sxx = Jset @ S @ Jset.T + Rset
     Rt2 = np.atleast_2d(np.asarray(Rt, dtype=float)) if (np.ndim(Rt) or Rt != 0.0) else None
     if joint:
@@ -170,7 +180,9 @@ def set_eig(idx, J, S, R):
     idx = list(idx)
     if not idx:
         return 0.0
-    Jset = _stack(J, idx); Rset = _block_diag(R, len(idx)); S = np.asarray(S, dtype=float)
+    Jset = _stack(J, idx)
+    Rset = _block_diag(R, len(idx))
+    S = np.asarray(S, dtype=float)
     return 0.5 * float(_logdet(Jset @ S @ Jset.T + Rset) - _logdet(Rset))
 
 
@@ -197,13 +209,17 @@ def complementarity(a, b, crit, J, Jt, S, R, Rt=0.0, base=()):
     worth more together than apart (a supermodular pair, the calibration mechanism of
     Investigation 2); ``base`` is an already selected set."""
     base = list(base)
-    F = lambda s: set_utility(s, crit, J, Jt, S, R, Rt)
+
+    def F(s):
+        return set_utility(s, crit, J, Jt, S, R, Rt)
+
     return F(base + [a, b]) - F(base + [a]) - F(base + [b]) + F(base)
 
 
 # ---------------------------------------------------------------------------------------------
 # beliefs for pseudo-Bayesian (prior-averaged) design
 # ---------------------------------------------------------------------------------------------
+
 
 class LinearBeliefs:
     """A list of linearisation points sharing the prior covariance: ``Js[k]`` ``(n, d_y, d)`` and
@@ -212,10 +228,16 @@ class LinearBeliefs:
     is the plain local design."""
 
     def __init__(self, Js, Jts, S0, R, Rt=0.0, weights=None):
-        self.Js = [np.asarray(J, dtype=float) for J in Js]; self.Jts = [np.asarray(J, dtype=float) for J in Jts]
-        self.S0 = np.asarray(S0, dtype=float); self.R = np.atleast_2d(np.asarray(R, dtype=float)); self.Rt = Rt
-        self.K = len(self.Js); self.n = self.Js[0].shape[0]
-        self.w = np.full(self.K, 1.0 / self.K) if weights is None else np.asarray(weights, dtype=float) / np.sum(weights)
+        self.Js = [np.asarray(J, dtype=float) for J in Js]
+        self.Jts = [np.asarray(J, dtype=float) for J in Jts]
+        self.S0 = np.asarray(S0, dtype=float)
+        self.R = np.atleast_2d(np.asarray(R, dtype=float))
+        self.Rt = Rt
+        self.K = len(self.Js)
+        self.n = self.Js[0].shape[0]
+        self.w = (
+            np.full(self.K, 1.0 / self.K) if weights is None else np.asarray(weights, dtype=float) / np.sum(weights)
+        )
 
     def scores(self, crit, Ss):
         """Averaged per-candidate scores given the per-draw current covariances ``Ss``."""
@@ -237,11 +259,19 @@ class LinearBeliefs:
 
     def utility(self, idx, crit):
         """Averaged set utility of ``idx`` from the prior."""
-        return float(sum(self.w[k] * set_utility(idx, crit, self.Js[k], self.Jts[k], self.S0, self.R, self.Rt) for k in range(self.K)))
+        return float(
+            sum(
+                self.w[k] * set_utility(idx, crit, self.Js[k], self.Jts[k], self.S0, self.R, self.Rt)
+                for k in range(self.K)
+            )
+        )
 
     def target_variance(self, idx, per_target=False):
         """Averaged target variance after observing ``idx`` (the loss-based terminal objective)."""
-        vals = [target_variance(posterior_cov(self.S0, self.Js[k], self.R, idx), self.Jts[k], self.Rt, per_target) for k in range(self.K)]
+        vals = [
+            target_variance(posterior_cov(self.S0, self.Js[k], self.R, idx), self.Jts[k], self.Rt, per_target)
+            for k in range(self.K)
+        ]
         return np.tensordot(self.w, np.asarray(vals, dtype=float), axes=1)
 
 
@@ -249,11 +279,13 @@ class LinearBeliefs:
 # design search
 # ---------------------------------------------------------------------------------------------
 
+
 def greedy(beliefs, crit, budget, warm=(), replace=True, rng=None):
     """One pass of greedy selection on the averaged score, starting after the (data-free) warm-start
     designs. Returns the selected indices (excluding the warm start) and the trace of the summed
     target variance (averaged over draws) after each selection, warm start included as entry 0."""
-    Ss = [beliefs.S0.copy() for _ in range(beliefs.K)]; used: list[int] = list(warm)
+    Ss = [beliefs.S0.copy() for _ in range(beliefs.K)]
+    used: list[int] = list(warm)
     for i in used:
         Ss = beliefs.update(Ss, i)
     trace = [float(np.sum(beliefs.target_variance(used)))]
@@ -264,30 +296,42 @@ def greedy(beliefs, crit, budget, warm=(), replace=True, rng=None):
         else:
             sc = beliefs.scores(crit, Ss)
             if not replace:
-                sc = sc.copy(); sc[used] = -np.inf
+                sc = sc.copy()
+                sc[used] = -np.inf
             i = int(np.argmax(sc))
-        used.append(i); Ss = beliefs.update(Ss, i); trace.append(float(np.sum(beliefs.target_variance(used))))
-    return used[len(warm):], np.array(trace)
+        used.append(i)
+        Ss = beliefs.update(Ss, i)
+        trace.append(float(np.sum(beliefs.target_variance(used))))
+    return used[len(warm) :], np.array(trace)
 
 
-def exchange_search(beliefs, crit, init, warm=(), replace=True, max_sweeps=20, rng=None, n_random_starts=0,
-                    budget=None, tol=1e-10):
+def exchange_search(
+    beliefs, crit, init, warm=(), replace=True, max_sweeps=20, rng=None, n_random_starts=0, budget=None, tol=1e-10
+):
     """Coordinate-wise exchange (local search) on the averaged *set* utility ``F(warm ∪ set)``:
     every position of the set is in turn replaced by the candidate maximising ``F``, until a full
     sweep improves nothing. Starts from ``init`` (e.g. the greedy solution) and, optionally, from
     ``n_random_starts`` random sets of size ``budget``; returns the best set found, its utility and
     the utility after each sweep of each start (so the plateau is documented). Every returned
     utility is evaluated from the prior with the warm start included."""
-    warm = list(warm); rng = rng or np.random.default_rng(0)
-    F = lambda s: beliefs.utility(warm + list(s), crit)
+    warm = list(warm)
+    rng = rng or np.random.default_rng(0)
+
+    def F(s):
+        return beliefs.utility(warm + list(s), crit)
+
     starts = [list(init)]
     for _ in range(n_random_starts):
         k = len(init) if budget is None else budget
         pool = np.arange(beliefs.n)
-        starts.append([int(v) for v in (rng.choice(pool, k, replace=True) if replace else rng.choice(pool, k, replace=False))])
+        starts.append(
+            [int(v) for v in (rng.choice(pool, k, replace=True) if replace else rng.choice(pool, k, replace=False))]
+        )
     best, best_val, traces = None, -np.inf, []
     for s in starts:
-        cur = list(s); val = F(cur); trace = [val]
+        cur = list(s)
+        val = F(cur)
+        trace = [val]
         for _ in range(max_sweeps):
             improved = False
             for pos in range(len(cur)):
@@ -295,11 +339,15 @@ def exchange_search(beliefs, crit, init, warm=(), replace=True, max_sweeps=20, r
                 for i in range(beliefs.n):
                     if i == cur[pos] or (not replace and i in cur):
                         continue
-                    trial = cur.copy(); trial[pos] = i; v = F(trial)
+                    trial = cur.copy()
+                    trial[pos] = i
+                    v = F(trial)
                     if v > cand_val + tol:
                         cand_best, cand_val = i, v
                 if cand_best != cur[pos]:
-                    cur[pos] = cand_best; val = cand_val; improved = True
+                    cur[pos] = cand_best
+                    val = cand_val
+                    improved = True
             trace.append(val)
             if not improved:
                 break
@@ -317,7 +365,8 @@ def enumerate_sets(n, k, replace=True):
 def exhaustive_best(beliefs, crit, k, warm=(), replace=True, top=5):
     """Exhaustive optimum of the averaged set utility over all sets of size ``k``; returns the best
     set, its utility and the ``top`` best (set, utility) pairs. Only for small ``n`` and ``k``."""
-    warm = list(warm); vals = []
+    warm = list(warm)
+    vals = []
     for s in enumerate_sets(beliefs.n, k, replace):
         vals.append((beliefs.utility(warm + list(s), crit), tuple(s)))
     vals.sort(reverse=True)

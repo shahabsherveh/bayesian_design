@@ -16,12 +16,8 @@ class TestLinearModel:
 
 
 class TestNeuralNetworkModel:
-    x_train = jax.random.normal(
-        jax.random.PRNGKey(0), shape=(20, 1, 1, 5)
-    )  # 5 data points, 1 feature
-    latent_true = 2 * jax.random.normal(
-        jax.random.PRNGKey(1), shape=(49, 1)
-    )  # 4 hidden units, 1 output
+    x_train = jax.random.normal(jax.random.PRNGKey(0), shape=(20, 1, 1, 5))  # 5 data points, 1 feature
+    latent_true = 2 * jax.random.normal(jax.random.PRNGKey(1), shape=(49, 1))  # 4 hidden units, 1 output
     # The hand-built weight vectors below assume ReLU hidden units (relu(1) = 1, relu(-1) = 0).
     flax_model = NNFLax(input_dim=5, hidden_dim_0=4, hidden_dim_1=4, rngs=nnx.Rngs(0), activation="relu")
     model = NeuralNetworkRegressor(flax_model)

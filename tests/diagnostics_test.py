@@ -1,4 +1,5 @@
 """Level 0 instruments (H0.2, H0.3) and Level 1 regression (H1.1)."""
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -27,7 +28,7 @@ def _setup(hidden_dims, prior_var=0.5, seed=0):
 def test_h03_mc_moments_are_exact_for_a_linear_model_up_to_sampling_error():
     model, z, cov, x, pool = _setup(hidden_dims=[])
     ekf = EKF(model, z, cov, 0.0, R)
-    exact = filter_moments(ekf, x, pool)                  # exact for a linear model
+    exact = filter_moments(ekf, x, pool)  # exact for a linear model
     errors = {}
     for n in (1_000, 16_000):
         mc = mc_moments(model, z, cov, x, pool, measurement_error=R, num_samples=n, key=jax.random.PRNGKey(3))
@@ -63,17 +64,32 @@ def test_h02_monte_carlo_epig_bias_shrinks_with_the_inner_sample_size():
 
     from bed.data import create_synthetic_data
     from bed.experiments import Experiment
+
     flax_model = DenseNN(input_dim=2, hidden_dims=[], output_dim=1, rngs=nnx.Rngs(0))
     truth = deepcopy(flax_model)
-    data = create_synthetic_data(truth, num_train=20, num_test=6, input_dim=2, embedding_dim=1,
-                                 measurement_noise_std=float(R[0, 0]) ** 0.5, key=jax.random.PRNGKey(0))
-    exp = Experiment(model=NeuralNetworkRegressor(flax_model), data=data,
-                     latent_cov=0.5 * jnp.eye(flax_model.weight_size), measurement_error=R, warm_start=0)
+    data = create_synthetic_data(
+        truth,
+        num_train=20,
+        num_test=6,
+        input_dim=2,
+        embedding_dim=1,
+        measurement_noise_std=float(R[0, 0]) ** 0.5,
+        key=jax.random.PRNGKey(0),
+    )
+    exp = Experiment(
+        model=NeuralNetworkRegressor(flax_model),
+        data=data,
+        latent_cov=0.5 * jnp.eye(flax_model.weight_size),
+        measurement_error=R,
+        warm_start=0,
+    )
     filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, R)
     x = exp.design_space[:3]
     closed = np.asarray(exp.calculate_epig(x, filt), dtype=float)
     bias = {}
     for k in (100, 3000):
-        est = np.stack([np.asarray(exp.calculate_epig_mc(x, filt, num_latent_samples=k), dtype=float) for _ in range(30)])
+        est = np.stack(
+            [np.asarray(exp.calculate_epig_mc(x, filt, num_latent_samples=k), dtype=float) for _ in range(30)]
+        )
         bias[k] = float(np.abs(est.mean(axis=0) - closed).mean())
     assert bias[3000] < bias[100], bias

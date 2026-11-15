@@ -47,11 +47,15 @@ class UKF(FilterSnapshotMixin):
             warnings.warn(
                 f"UKF alpha={alpha} is outside (0, 1]; the scaled unscented transform "
                 "places the sigma points alpha*sqrt(d) prior standard deviations from "
-                "the mean and is defined for 0 < alpha <= 1.", stacklevel=2)
+                "the mean and is defined for 0 < alpha <= 1.",
+                stacklevel=2,
+            )
         if beta < alpha**2:
             warnings.warn(
                 f"UKF beta={beta} < alpha^2={alpha**2}: the sigma-point covariances are "
-                "not guaranteed to be positive semidefinite.", stacklevel=2)
+                "not guaranteed to be positive semidefinite.",
+                stacklevel=2,
+            )
         self.model = model
         self.measurement_error = jnp.asarray(measurement_error)
         self.alpha = alpha
@@ -63,9 +67,7 @@ class UKF(FilterSnapshotMixin):
             if jnp.ndim(state_innovation) == 0
             else jnp.asarray(state_innovation)
         )
-        self.state_prior = self._get_state_prior(
-            state_prev, state_cov_prev, self.state_innovation
-        )
+        self.state_prior = self._get_state_prior(state_prev, state_cov_prev, self.state_innovation)
 
     @staticmethod
     def _get_state_prior(state_prev, state_cov_prev, state_innovation):
@@ -79,13 +81,9 @@ class UKF(FilterSnapshotMixin):
         scale = n + lam
         covariance = (covariance + covariance.T) / 2
         root = jnp.linalg.cholesky(scale * covariance)
-        points = jnp.concatenate(
-            [mean[None], mean[None] + root.T, mean[None] - root.T], axis=0
-        )
+        points = jnp.concatenate([mean[None], mean[None] + root.T, mean[None] - root.T], axis=0)
         weights_mean = jnp.full(2 * n + 1, 1 / (2 * scale))
-        weights_cov = weights_mean.at[0].set(
-            1 - n / scale + (1 - self.alpha**2 + self.beta)
-        )
+        weights_cov = weights_mean.at[0].set(1 - n / scale + (1 - self.alpha**2 + self.beta))
         weights_mean = weights_mean.at[0].set(1 - n / scale)
         return points, jnp.expand_dims(weights_mean, axis=[0, 2, 3, 4]), jnp.expand_dims(weights_cov, axis=[0, 2, 3, 4])
 
@@ -103,8 +101,7 @@ class UKF(FilterSnapshotMixin):
 
     def _measurements(self, points, x):
         """Evaluate the measurement model at every sigma point."""
-        values = jax.vmap(lambda theta: self.model(
-            theta.T, x), out_axes=1)(points)
+        values = jax.vmap(lambda theta: self.model(theta.T, x), out_axes=1)(points)
         return values
 
     def _measurement_statistics(self, x):
@@ -120,11 +117,7 @@ class UKF(FilterSnapshotMixin):
         deviations = values - mean[:, None, :]
         # The transformed covariance includes observation noise independently
         # of the uncertainty induced by the sigma-point state distribution.
-        covariance = (
-            jnp.einsum("k,bka,bkc->bac", weights_cov,
-                       deviations, deviations)
-            + self.measurement_error
-        )
+        covariance = jnp.einsum("k,bka,bkc->bac", weights_cov, deviations, deviations) + self.measurement_error
         cross_covariance = jnp.einsum(
             "k,kn,bkm->bnm",
             weights_cov,
@@ -136,9 +129,9 @@ class UKF(FilterSnapshotMixin):
     def get_state_posterior(self, measurement, x):
         """Update the state using an unscented measurement transform."""
         measurement = jnp.asarray(measurement).reshape(1, -1)
-        mean_meas, S_x, P_x = self._measurement_statistics(x)      # (1, d_y), (1, d_y, d_y), (1, n, d_y)
-        gain = P_x @ jnp.linalg.inv(S_x)                          # (1, n, d_y)
-        innovation = (measurement - mean_meas)[..., None]         # (1, d_y, 1)
+        mean_meas, S_x, P_x = self._measurement_statistics(x)  # (1, d_y), (1, d_y, d_y), (1, n, d_y)
+        gain = P_x @ jnp.linalg.inv(S_x)  # (1, n, d_y)
+        innovation = (measurement - mean_meas)[..., None]  # (1, d_y, 1)
         mean = jnp.asarray(self.state_prior[0]).reshape(-1) + (gain @ innovation).reshape(-1)
         covariance = (self.state_prior[1] - gain @ S_x @ jnp.matrix_transpose(gain))[0]
         covariance = (covariance + covariance.T) / 2
@@ -173,10 +166,8 @@ class UKF(FilterSnapshotMixin):
         obs_mean = jnp.sum(obs_values * weights_mean, axis=1)
         pred_dev = pred_values - jnp.expand_dims(pred_mean, axis=1)
         obs_dev = obs_values - jnp.expand_dims(obs_mean, axis=1)
-        cov_pred = jnp.sum(weights_cov * pred_dev * pred_dev,
-                           axis=1) + self.measurement_error
-        cov_obs = jnp.sum(weights_cov * obs_dev * obs_dev,
-                          axis=1) + self.measurement_error
+        cov_pred = jnp.sum(weights_cov * pred_dev * pred_dev, axis=1) + self.measurement_error
+        cov_obs = jnp.sum(weights_cov * obs_dev * obs_dev, axis=1) + self.measurement_error
         cross = jnp.sum(weights_cov * pred_dev * obs_dev, axis=1)
         return cov_pred - cross * cross / cov_obs
 
@@ -184,9 +175,7 @@ class UKF(FilterSnapshotMixin):
         """Calculate mutual information in nats."""
         posterior_cov = self.measurement_posterior_cov_estimate(x_pred, x_obs)
         prior_cov = self.measurement_prior(x_pred)[1]
-        return multivariate_normal(cov=prior_cov).entropy() - multivariate_normal(
-            cov=posterior_cov
-        ).entropy()
+        return multivariate_normal(cov=prior_cov).entropy() - multivariate_normal(cov=posterior_cov).entropy()
 
     def measurement_preditive_prior(self, x):
         """Backward-compatible alias for :meth:`measurement_prior`."""
@@ -245,8 +234,7 @@ class UKF(FilterSnapshotMixin):
         S_x = jnp.einsum("k,bka,bkc->bac", weights_cov, dev_x, dev_x) + R
         S_1 = jnp.einsum("k,mka,mkc->mac", weights_cov, dev_1, dev_1) + R
         C = jnp.einsum("k,mka,bkc->bmac", weights_cov, dev_1, dev_x)
-        S_plus = S_1[None] - \
-            C @ jnp.linalg.inv(S_x)[:, None] @ jnp.matrix_transpose(C)
+        S_plus = S_1[None] - C @ jnp.linalg.inv(S_x)[:, None] @ jnp.matrix_transpose(C)
         logdet_1 = jnp.linalg.slogdet(S_1).logabsdet
         logdet_plus = jnp.linalg.slogdet(S_plus).logabsdet
         epig = 0.5 * (logdet_1[None, :] - logdet_plus)
@@ -256,10 +244,8 @@ class UKF(FilterSnapshotMixin):
         """Calculate parameter EIG from the UKF covariance reduction."""
         mean, S_x, P_x = self._measurement_statistics(x)
         _, state_cov = self.state_prior
-        state_cov_post = state_cov - \
-            P_x @ jnp.linalg.inv(S_x) @ jnp.matrix_transpose(P_x)
-        eig = 0.5 * (jnp.linalg.slogdet(state_cov).logabsdet -
-                     jnp.linalg.slogdet(state_cov_post).logabsdet)
+        state_cov_post = state_cov - P_x @ jnp.linalg.inv(S_x) @ jnp.matrix_transpose(P_x)
+        eig = 0.5 * (jnp.linalg.slogdet(state_cov).logabsdet - jnp.linalg.slogdet(state_cov_post).logabsdet)
         return eig.squeeze()
 
 
@@ -273,13 +259,12 @@ if __name__ == "__main__":
     hidden_dims = [2, 2]
     output_dim = 1
     node_dims = jnp.array([input_dim] + hidden_dims + [output_dim])
-    latent_dim = jnp.sum(
-        node_dims[:-1]*node_dims[1:]) + jnp.sum(node_dims[1:])
-    flax_model = DenseNN(input_dim=input_dim, hidden_dims=hidden_dims,
-                         output_dim=output_dim, rngs=rngs)
+    latent_dim = jnp.sum(node_dims[:-1] * node_dims[1:]) + jnp.sum(node_dims[1:])
+    flax_model = DenseNN(input_dim=input_dim, hidden_dims=hidden_dims, output_dim=output_dim, rngs=rngs)
     model = NeuralNetworkRegressor(model=flax_model)
     state_prev_cov = jnp.eye(latent_dim)
     state_prev = jnp.zeros(latent_dim)
-    ukf = UKF(model=model, state_prev=state_prev, state_cov_prev=state_prev_cov,
-              state_innovation=0, measurement_error=.1)
+    ukf = UKF(
+        model=model, state_prev=state_prev, state_cov_prev=state_prev_cov, state_innovation=0, measurement_error=0.1
+    )
     epig = ukf.calculate_epig(designs[0], designs)

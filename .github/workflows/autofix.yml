@@ -49,7 +49,9 @@ jobs:
       # type errors (verified: --fix reports "0 fixed" even for an invalid assignment),
       # so it stays a read-only gate in tests.yml rather than pretending to fix.
       - name: Apply ruff fixes
-        run: ruff check src/ tests/ experiments/ --fix
+        run: |
+          ruff check src/ tests/ experiments/ --fix
+          ruff format src/ tests/ experiments/
 
       - name: Apply pymarkdown fixes
         # Same file set as the scan in tests.yml, so a new markdown file cannot escape.
@@ -77,9 +79,10 @@ jobs:
       - name: Verify the fixed tree still passes
         if: steps.diff.outputs.changed == 'true'
         run: |
+          ruff format --check src/ tests/ experiments/
           ruff check src/ tests/ experiments/
           pymarkdown --config .pymarkdown.json scan $(git ls-files '*.md')
-          ty check src/ --exit-zero-on-warning
+          ty check src/
 
       - name: Commit to a new branch and open a PR
         if: steps.diff.outputs.changed == 'true' && inputs.open_pr

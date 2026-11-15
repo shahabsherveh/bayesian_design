@@ -34,7 +34,11 @@ jobs:
           python -m pip install ruff ty pymarkdownlnt
 
       - name: ruff
-        run: ruff check src/ tests/ experiments/
+        # --check: fail rather than rewrite, so CI reports the drift instead of fixing it
+        # behind the reviewer's back. Run `ruff format` locally to apply.
+        run: |
+          ruff format --check src/ tests/ experiments/
+          ruff check src/ tests/ experiments/
 
       - name: pymarkdown
         # --config is required: pymarkdown does not otherwise pick up the project file.

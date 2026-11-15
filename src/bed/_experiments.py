@@ -93,8 +93,7 @@ class Experiment:
             raise TypeError("model must be provided.")
         if latent_cov is None:
             if latent_var is None:
-                raise TypeError(
-                    "Either latent_cov or latent_var must be provided.")
+                raise TypeError("Either latent_cov or latent_var must be provided.")
             latent_cov = latent_var * jnp.eye(model.flax_model.weight_size)
         if measurement_error is None:
             raise TypeError("measurement_error must be provided.")
@@ -120,8 +119,7 @@ class Experiment:
             latent_mean=latent_mean,
         )
         self.data = data
-        self.design_pool, self.design_space, self.true_measurements = self.build_design_space(
-            data)
+        self.design_pool, self.design_space, self.true_measurements = self.build_design_space(data)
         self.measurement_error = (
             # if not pre_train_model else model.mse * jnp.eye(1)
             measurement_error
@@ -134,11 +132,9 @@ class Experiment:
         # optionally the noise scale) by marginal likelihood on those observations and starts
         # every criterion from the Laplace belief at the MAP (see bed.empirical_bayes).
         if init not in ("filter", "empirical_bayes"):
-            raise ValueError(
-                f"Unknown init '{init}'; choose 'filter' or 'empirical_bayes'.")
+            raise ValueError(f"Unknown init '{init}'; choose 'filter' or 'empirical_bayes'.")
         self.init = init
-        self.empirical_bayes_kwargs = {} if empirical_bayes_kwargs is None else dict(
-            empirical_bayes_kwargs)
+        self.empirical_bayes_kwargs = {} if empirical_bayes_kwargs is None else dict(empirical_bayes_kwargs)
         # Random source for the RANDOM criterion and Monte Carlo EPIG; `run`
         # re-seeds it so every (filter, criterion) run is reproducible.
         self._rng = np.random.default_rng(seed)
@@ -166,8 +162,7 @@ class Experiment:
         if latent_mean is not None:
             return jnp.asarray(latent_mean).reshape(-1, 1), latent_cov
         if not hasattr(model, "flax_model"):
-            raise TypeError(
-                "latent_mean is required for models without Flax parameters.")
+            raise TypeError("latent_mean is required for models without Flax parameters.")
         model_state = nnx.state(model.flax_model)
         mean = model.flax_model.state_to_weights(model_state)
         # mean = np.zeros((latent_dim, 1))
@@ -190,8 +185,7 @@ class Experiment:
         """
         design_pool = data.x_test_pool
         design_space = jnp.concatenate([data.x_train], axis=0)
-        true_measurements = jnp.concatenate(
-            [data.y_train], axis=0)
+        true_measurements = jnp.concatenate([data.y_train], axis=0)
         return design_pool, design_space, true_measurements
 
     def calculate_epig(self, x, filtr, x_1=None, **kwargs):
@@ -247,11 +241,8 @@ class Experiment:
             This implementation is incomplete - it samples but doesn't compute
             the mutual information. Use calculate_epig() for a working implementation.
         """
-        mean_1 = jnp.expand_dims(jax.vmap(lambda theta: self.model(
-            theta.T, x_1))(latent_samples), axis=2)
-        mean_0 = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x_0))(
-            latent_samples), axis=1
-        )
+        mean_1 = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x_1))(latent_samples), axis=2)
+        mean_0 = jnp.expand_dims(jax.vmap(lambda theta: self.model(theta.T, x_0))(latent_samples), axis=1)
         epsilon_1 = mean_1 - y_1
         epsilon_0 = mean_0 - y_0
 
@@ -273,9 +264,11 @@ class Experiment:
         """Draw parameter samples from the filter's Gaussian belief with the run's generator."""
         local_rng = rng if rng is not None else self._rng
         state_mean, state_cov = filtr.state_prior
-        return jnp.asarray(multivariate_normal(
-            mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
-        ).rvs(size=size, random_state=local_rng)).reshape(size, -1)
+        return jnp.asarray(
+            multivariate_normal(mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)).rvs(
+                size=size, random_state=local_rng
+            )
+        ).reshape(size, -1)
 
     def calculate_epig_mc(self, x, filtr, x_1=None, num_latent_samples=1000, rng=None, **kwargs):
         """Nested Monte Carlo estimate of EPIG (Bickford Smith et al., 2023) for any output
@@ -300,30 +293,20 @@ class Experiment:
         # one outer sample (theta_j, y_j, y'_j) per pool point, K inner samples for the densities
         theta_outer = self._sample_latent(filtr, M, rng=local_rng)
         theta_inner = self._sample_latent(filtr, K, rng=local_rng)
-        f_out_x = jax.vmap(lambda th: self.model(th, x))(
-            theta_outer).reshape(M, B, d_y)
-        f_out_x1 = jax.vmap(lambda th: self.model(th, x_1))(
-            theta_outer).reshape(M, M, d_y)
+        f_out_x = jax.vmap(lambda th: self.model(th, x))(theta_outer).reshape(M, B, d_y)
+        f_out_x1 = jax.vmap(lambda th: self.model(th, x_1))(theta_outer).reshape(M, M, d_y)
         # pair pool point j with theta_j: (M, d_y)
         f_out_x1 = f_out_x1[jnp.arange(M), jnp.arange(M)]
-        y_0 = f_out_x + jnp.sqrt(r) * \
-            jnp.asarray(
-            local_rng.normal(size=(M, B, d_y)))
-        y_1 = f_out_x1 + jnp.sqrt(r) * \
-            jnp.asarray(local_rng.normal(size=(M, d_y)))
-        f_in_x = jax.vmap(lambda th: self.model(th, x))(
-            theta_inner).reshape(K, B, d_y)
-        f_in_x1 = jax.vmap(lambda th: self.model(th, x_1))(
-            theta_inner).reshape(K, M, d_y)
+        y_0 = f_out_x + jnp.sqrt(r) * jnp.asarray(local_rng.normal(size=(M, B, d_y)))
+        y_1 = f_out_x1 + jnp.sqrt(r) * jnp.asarray(local_rng.normal(size=(M, d_y)))
+        f_in_x = jax.vmap(lambda th: self.model(th, x))(theta_inner).reshape(K, B, d_y)
+        f_in_x1 = jax.vmap(lambda th: self.model(th, x_1))(theta_inner).reshape(K, M, d_y)
         # (K, M, B)
-        logp_0 = -0.5 * \
-            jnp.sum((y_0[None] - f_in_x[:, None]) ** 2 / r, axis=-1)
+        logp_0 = -0.5 * jnp.sum((y_0[None] - f_in_x[:, None]) ** 2 / r, axis=-1)
         # (K, M, 1)
-        logp_1 = -0.5 * jnp.sum((y_1[None] - f_in_x1)
-                                ** 2 / r, axis=-1)[..., None]
+        logp_1 = -0.5 * jnp.sum((y_1[None] - f_in_x1) ** 2 / r, axis=-1)[..., None]
         log_k = jnp.log(K)
-        log_joint = jax.scipy.special.logsumexp(
-            logp_0 + logp_1, axis=0) - log_k
+        log_joint = jax.scipy.special.logsumexp(logp_0 + logp_1, axis=0) - log_k
         log_marg_0 = jax.scipy.special.logsumexp(logp_0, axis=0) - log_k
         log_marg_1 = jax.scipy.special.logsumexp(logp_1, axis=0) - log_k
         # (M, B)
@@ -397,19 +380,16 @@ class Experiment:
         local_rng = rng if rng is not None else self._rng
         keys = self._criterion_keys(self.design_space.shape[0], rng=local_rng)
         if method == "brute_force":
-            pool_values = jnp.asarray(criterion_func(
-                x=self.design_space, filtr=filtr, key=keys, rng=local_rng)).reshape(-1)
+            pool_values = jnp.asarray(
+                criterion_func(x=self.design_space, filtr=filtr, key=keys, rng=local_rng)
+            ).reshape(-1)
             if exclude:
                 # Pool-based selection is without replacement: a design whose
                 # label is already in the filter cannot be selected again.
                 if len(exclude) >= pool_values.shape[0]:
-                    raise ValueError(
-                        "Every design in the pool has been observed.")
-                pool_values = pool_values.at[jnp.asarray(
-                    sorted(exclude))].set(-jnp.inf)
-            shuffled_indices = jax.random.permutation(
-                jax.random.key(0), self.design_space.shape[0]
-            )
+                    raise ValueError("Every design in the pool has been observed.")
+                pool_values = pool_values.at[jnp.asarray(sorted(exclude))].set(-jnp.inf)
+            shuffled_indices = jax.random.permutation(jax.random.key(0), self.design_space.shape[0])
             # shuffled_indices = jnp.arange(self.design_space.shape[0])
             pool_values_shuffled = pool_values[shuffled_indices]
             best_position = jnp.argmax(pool_values_shuffled)
@@ -421,15 +401,12 @@ class Experiment:
                 size=self.design_space[:1].shape,
                 scale=0.01,
             )
-            grad_func = jax.value_and_grad(
-                lambda x: criterion_func(x, filtr=filtr, key=keys, rng=local_rng)[0])
+            grad_func = jax.value_and_grad(lambda x: criterion_func(x, filtr=filtr, key=keys, rng=local_rng)[0])
             max_iters = int(params.get("max_iters", 50))
             lr = params.get("lr")
             pbar = tqdm(range(max_iters), desc="Optimizing design", leave=True)
             for i in pbar:
-                if (x > self.design_space.max(axis=0)).any() or (
-                    x < self.design_space.min(axis=0)
-                ).any():
+                if (x > self.design_space.max(axis=0)).any() or (x < self.design_space.min(axis=0)).any():
                     print("Design out of bounds, stopping optimization.")
                     break
                 crit_value, grads = grad_func(x)
@@ -440,14 +417,16 @@ class Experiment:
             # observable design with a pool index like the other methods.
             best_index = self._nearest_pool_index(x.squeeze(0), exclude)
             x = self.design_space[best_index]
-            crit_value = jnp.asarray(criterion_func(
-                x=x[None, ...], filtr=filtr, key=keys[:1], rng=local_rng)).reshape(-1)[0]
+            crit_value = jnp.asarray(criterion_func(x=x[None, ...], filtr=filtr, key=keys[:1], rng=local_rng)).reshape(
+                -1
+            )[0]
         elif method == "grid_search":
             num_samples = params.get("num_samples", 200)
             # Sample candidate designs from the pool with replacement, so the
             # result is a real (observable) design and has a pool index.
             best_index, crit_value = self._pool_sample_search(
-                criterion_func, filtr, num_samples, exclude, rng=local_rng)
+                criterion_func, filtr, num_samples, exclude, rng=local_rng
+            )
             x = self.design_space[best_index]
 
         return best_index, x, crit_value
@@ -473,25 +452,26 @@ class Experiment:
         n = self.design_space.shape[0]
         if exclude and len(exclude) >= n:
             raise ValueError("Every design in the pool has been observed.")
-        idx = jax.random.randint(
-            jax.random.key(0), (num_samples,), 0, n)
+        idx = jax.random.randint(jax.random.key(0), (num_samples,), 0, n)
         # The criterion consumes one key per candidate design.
         sample_keys = self._criterion_keys(num_samples, rng=local_rng)
-        values = jnp.asarray(criterion_func(
-            x=self.design_space[idx], filtr=filtr, key=sample_keys,
-            rng=local_rng)).reshape(-1)
+        values = jnp.asarray(
+            criterion_func(x=self.design_space[idx], filtr=filtr, key=sample_keys, rng=local_rng)
+        ).reshape(-1)
         if exclude:
             allowed = ~jnp.isin(idx, jnp.asarray(sorted(exclude)))
             if not bool(jnp.any(allowed)):
                 # Every drawn point was excluded: evaluate the full allowed pool.
                 keep = [i for i in range(n) if i not in set(int(e) for e in exclude)]
                 allowed_idx = jnp.asarray(keep)
-                pool_values = jnp.asarray(criterion_func(
-                    x=self.design_space[allowed_idx],
-                    filtr=filtr,
-                    key=self._criterion_keys(len(keep), rng=local_rng),
-                    rng=local_rng,
-                )).reshape(-1)
+                pool_values = jnp.asarray(
+                    criterion_func(
+                        x=self.design_space[allowed_idx],
+                        filtr=filtr,
+                        key=self._criterion_keys(len(keep), rng=local_rng),
+                        rng=local_rng,
+                    )
+                ).reshape(-1)
                 return allowed_idx[jnp.argmax(pool_values)], pool_values.max()
             values = values.at[~allowed].set(-jnp.inf)
         best_pos = jnp.argmax(values)
@@ -552,10 +532,10 @@ class Experiment:
             "EPIG": self.calculate_epig,
             "EIG": self.calculate_eig,
             "EPIG-MC": self.calculate_epig_mc,
-            "RANDOM": self.calculate_random}
+            "RANDOM": self.calculate_random,
+        }
         if criterion_label not in criterion_dict:
-            raise ValueError(
-                f"Unknown criterion '{criterion_label}'; choose from {sorted(criterion_dict)}")
+            raise ValueError(f"Unknown criterion '{criterion_label}'; choose from {sorted(criterion_dict)}")
         criterion_func = criterion_dict[criterion_label]
         if optimizer_params is None:
             optimizer_params = {"lr": 1, "max_iters": 50}
@@ -576,28 +556,20 @@ class Experiment:
         rmse_values_test_glob = []
         filters = []
 
-        progress_bar = tqdm(
-            range(epochs), total=epochs, desc=f"Running {criterion_label} Experiment"
-        )
+        progress_bar = tqdm(range(epochs), total=epochs, desc=f"Running {criterion_label} Experiment")
         filtr = filter_instance
         for i in progress_bar:
             estimate_mean, estimate_cov = filtr.state_prior
-            mean_test_pool, cov_test_pool = filtr.measurement_prior(
-                self.data.x_test_pool)
-            mean_test_glob, cov_test_glob = filtr.measurement_prior(
-                self.data.x_test_glob)
+            mean_test_pool, cov_test_pool = filtr.measurement_prior(self.data.x_test_pool)
+            mean_test_glob, cov_test_glob = filtr.measurement_prior(self.data.x_test_glob)
             if trace:
                 # Snapshot the belief (sharing the immutable model) rather than
                 # deep-copying the whole filter, which would clone the model graph
                 # every epoch. Fall back to deepcopy for filters without snapshot().
                 snap = getattr(filtr, "snapshot", None)
                 filters.append(snap() if callable(snap) else deepcopy(filtr))
-            rmse_predictions_pool = self.calculate_rmse_predictions(
-                mean_test_pool, self.data.y_test_pool.squeeze()
-            )
-            rmse_predictions_glob = self.calculate_rmse_predictions(
-                mean_test_glob, self.data.y_test_glob.squeeze()
-            )
+            rmse_predictions_pool = self.calculate_rmse_predictions(mean_test_pool, self.data.y_test_pool.squeeze())
+            rmse_predictions_glob = self.calculate_rmse_predictions(mean_test_glob, self.data.y_test_glob.squeeze())
             sd_pool = self.calculate_rmse(cov_test_pool)
             sd_glob = self.calculate_rmse(cov_test_glob)
 
@@ -612,8 +584,7 @@ class Experiment:
             measurement = self.data.observe(best_index)
             used_indices.add(int(best_index))
             selected_indices.append(int(best_index))
-            posterior = filtr.get_state_posterior(
-                measurement, x_opt[None, ...])
+            posterior = filtr.get_state_posterior(measurement, x_opt[None, ...])
 
             filtr.state_prior = posterior
             progress_bar.set_postfix(
@@ -629,10 +600,8 @@ class Experiment:
             crit_values.append(crit_value)
             rmse_values_test_glob.append(rmse_predictions_glob)
             rmse_values_test_pool.append(rmse_predictions_pool)
-            rmse_outputs_test_pool.append(self.calculate_rmse_per_output(
-                mean_test_pool, self.data.y_test_pool))
-            rmse_outputs_test_glob.append(self.calculate_rmse_per_output(
-                mean_test_glob, self.data.y_test_glob))
+            rmse_outputs_test_pool.append(self.calculate_rmse_per_output(mean_test_pool, self.data.y_test_pool))
+            rmse_outputs_test_glob.append(self.calculate_rmse_per_output(mean_test_glob, self.data.y_test_glob))
             sd_values_test_glob.append(sd_glob)
             sd_values_test_pool.append(sd_pool)
         return ExperimentResults(
@@ -683,9 +652,7 @@ class Experiment:
         Returns:
             Average RMSE across all parameters (scalar)
         """
-        return jnp.sqrt(
-            jnp.mean((estimate_mean - latent_true.flatten()) ** 2, axis=0)
-        ).mean()
+        return jnp.sqrt(jnp.mean((estimate_mean - latent_true.flatten()) ** 2, axis=0)).mean()
 
     def calculate_rmse_predictions(self, predictions, true_measurements):
         """
@@ -699,10 +666,7 @@ class Experiment:
             Average RMSE across all prediction locations (scalar)
         """
 
-        return (
-            jnp.mean((predictions.squeeze() -
-                     true_measurements.squeeze()) ** 2) ** 0.5
-        )
+        return jnp.mean((predictions.squeeze() - true_measurements.squeeze()) ** 2) ** 0.5
 
     def run_experiment(
         self,
@@ -712,7 +676,7 @@ class Experiment:
         iterations=10,
         optimizer_method="brute_force",
         optimizer_params=None,
-        trace=False
+        trace=False,
     ):
         """
         Compare EPIG and EIG design strategies side-by-side.
@@ -750,7 +714,7 @@ class Experiment:
         results = []
         for i, filter_type in enumerate(filter_types):
             filter_kwargs = filter_params[i]
-            filter_dict = {'ukf': UKF, 'ekf': EKF}
+            filter_dict = {"ukf": UKF, "ekf": EKF}
             fclass = filter_dict[filter_type]
             filter_instance = fclass(
                 model=self.model,
@@ -758,7 +722,7 @@ class Experiment:
                 state_cov_prev=self.state_init_prior[1],
                 state_innovation=self.latent_innovation,
                 measurement_error=self.measurement_error,
-                **filter_params[i]
+                **filter_params[i],
             )
             # The same seed for every filter gives them the same warm-start designs.
             warm = self.run(
@@ -776,10 +740,14 @@ class Experiment:
             if self.init == "empirical_bayes":
                 idx = jnp.asarray(warm.selected_indices, dtype=int)
                 eb = empirical_bayes_init(
-                    self.model, self.data.x_train[idx], self.data.y_train[idx],
-                    prior_mean=self.state_init_prior[0], prior_cov=self.state_init_prior[1],
+                    self.model,
+                    self.data.x_train[idx],
+                    self.data.y_train[idx],
+                    prior_mean=self.state_init_prior[0],
+                    prior_cov=self.state_init_prior[1],
                     z_init=filter_instance.state_prior[0],
-                    noise_cov=self.measurement_error, **self.empirical_bayes_kwargs,
+                    noise_cov=self.measurement_error,
+                    **self.empirical_bayes_kwargs,
                 )
                 # The warm-start observations are used once, inside the Laplace belief; the
                 # filter starts from it with the fitted observation covariance.
@@ -789,7 +757,7 @@ class Experiment:
                     state_cov_prev=eb.cov,
                     state_innovation=self.latent_innovation,
                     measurement_error=eb.noise_cov,
-                    **filter_params[i]
+                    **filter_params[i],
                 )
                 warm.init_info = eb
             results.append(warm)
@@ -886,12 +854,9 @@ class ExperimentResults:
         self.design_space = design_space
         self.filters = filters
         self.data = data
-        self.selected_indices = [] if selected_indices is None else list(
-            selected_indices)
-        self.rmse_pool_outputs = [] if rmse_pool_outputs is None else list(
-            rmse_pool_outputs)
-        self.rmse_glob_outputs = [] if rmse_glob_outputs is None else list(
-            rmse_glob_outputs)
+        self.selected_indices = [] if selected_indices is None else list(selected_indices)
+        self.rmse_pool_outputs = [] if rmse_pool_outputs is None else list(rmse_pool_outputs)
+        self.rmse_glob_outputs = [] if rmse_glob_outputs is None else list(rmse_glob_outputs)
         # EmpiricalBayesResult when the warm start was followed by empirical Bayes
         self.init_info = None
 
@@ -914,15 +879,14 @@ class MultiExperimentResults:
         Args:
             experiment_results_list: List of ExperimentResults objects to compare
         """
-        self.experiment_results_dict = self._list_to_dict(
-            experiment_results_list)
+        self.experiment_results_dict = self._list_to_dict(experiment_results_list)
 
     @staticmethod
-    def _list_to_dict(l):
+    def _list_to_dict(xs):
         d = {}
-        for e in l:
+        for e in xs:
             d[e.filter_type] = {}
-        for e in l:
+        for e in xs:
             d[e.filter_type][e.crit_label] = e
 
         return d

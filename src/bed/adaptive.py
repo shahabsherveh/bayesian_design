@@ -32,6 +32,7 @@ rather than certifying it. The posteriors in this study are nothing like that --
 agreement is 5.5e-8 across all 72 development histories -- but a caller integrating something
 heavier-tailed should read the gate rather than assume it passes.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -64,7 +65,7 @@ class _Cell:
         self.lo, self.hi, self.pts, self.W = lo, hi, pts, W
         self.val, self.err, self.depth = val, err, depth
 
-    def __lt__(self, other):      # heapq is a min-heap and we want the worst cell first
+    def __lt__(self, other):  # heapq is a min-heap and we want the worst cell first
         return self.err > other.err
 
 
@@ -75,8 +76,21 @@ class AdaptiveQuadrature:
     so the two can be swapped in any evaluator, but shares no machinery with it.
     """
 
-    def __init__(self, post, mu0, S0, refine_fn=None, n_gl=10, n_gl_low=5, rtol=1e-7,
-                 max_cells=12000, init_span=7.0, tail_tol=1e-8, max_expansions=6, min_depth=2):
+    def __init__(
+        self,
+        post,
+        mu0,
+        S0,
+        refine_fn=None,
+        n_gl=10,
+        n_gl_low=5,
+        rtol=1e-7,
+        max_cells=12000,
+        init_span=7.0,
+        tail_tol=1e-8,
+        max_expansions=6,
+        min_depth=2,
+    ):
         self.post = post
         mu0 = np.asarray(mu0, float)
         S0 = np.asarray(S0, float)
@@ -92,13 +106,11 @@ class AdaptiveQuadrature:
         self.expansion_log = []
         for it in range(max_expansions):
             lo, hi = mu0 - span * sd, mu0 + span * sd
-            leaves, info = self._refine_box(post, refine_fn, lo, hi, rtol, max_cells,
-                                            min_depth, off)
+            leaves, info = self._refine_box(post, refine_fn, lo, hi, rtol, max_cells, min_depth, off)
             # Tail check: integrate the frame that the NEXT larger rectangle would add, and report
             # its contribution relative to what is already inside. This measures the omitted region
             # instead of bounding it by an assumed shape.
-            frame, frame_unresolved = self._frame_mass(post, refine_fn, lo, hi, mu0, sd,
-                                                      span, 1.6, off)
+            frame, frame_unresolved = self._frame_mass(post, refine_fn, lo, hi, mu0, sd, span, 1.6, off)
             inside = info["totals"]
             scale = np.maximum(np.abs(inside), 1e-300)
             rel = float(np.max(np.abs(frame) / scale))
@@ -106,9 +118,14 @@ class AdaptiveQuadrature:
             # decision, so a frame the refinement failed to resolve forces expansion rather than
             # passing as negligible.
             rel_unres = float(frame_unresolved / float(scale.max()))
-            self.expansion_log.append({"span": float(span), "frame_relative": rel,
-                                       "frame_unresolved_relative": rel_unres,
-                                       "n_cells": info["n_cells"]})
+            self.expansion_log.append(
+                {
+                    "span": float(span),
+                    "frame_relative": rel,
+                    "frame_unresolved_relative": rel_unres,
+                    "n_cells": info["n_cells"],
+                }
+            )
             if max(rel, rel_unres) <= tail_tol:
                 break
             span *= 1.6
@@ -129,7 +146,7 @@ class AdaptiveQuadrature:
         self.w = w / w.sum()
         self.n_nodes = int(nodes.shape[0])
         self.n_cells = len(leaves)
-        self.ess = float(1.0 / np.sum(self.w ** 2))
+        self.ess = float(1.0 / np.sum(self.w**2))
         self.max_node_weight = float(self.w.max())
 
     # ---- mesh construction
@@ -151,12 +168,11 @@ class AdaptiveQuadrature:
 
     def _refine_box(self, post, refine_fn, lo, hi, rtol, max_cells, min_depth, off):
         heap, totals, n_cells = [], None, 0
-        m = 2 ** min_depth
+        m = 2**min_depth
         for i in range(m):
             for j in range(m):
                 clo = np.array([lo[0] + (hi[0] - lo[0]) * i / m, lo[1] + (hi[1] - lo[1]) * j / m])
-                chi = np.array([lo[0] + (hi[0] - lo[0]) * (i + 1) / m,
-                                lo[1] + (hi[1] - lo[1]) * (j + 1) / m])
+                chi = np.array([lo[0] + (hi[0] - lo[0]) * (i + 1) / m, lo[1] + (hi[1] - lo[1]) * (j + 1) / m])
                 v, e, pts, W = self._eval(post, refine_fn, clo, chi, self.n_gl, self.n_gl_low, off)
                 totals = v if totals is None else totals + v
                 heapq.heappush(heap, _Cell(clo, chi, pts, W, v, float(e.max()), min_depth))
@@ -178,28 +194,32 @@ class AdaptiveQuadrature:
                 for j in range(2):
                     klo = np.array([c.lo[0] if i == 0 else mid[0], c.lo[1] if j == 0 else mid[1]])
                     khi = np.array([mid[0] if i == 0 else c.hi[0], mid[1] if j == 0 else c.hi[1]])
-                    v, e, pts, W = self._eval(post, refine_fn, klo, khi,
-                                              self.n_gl, self.n_gl_low, off)
+                    v, e, pts, W = self._eval(post, refine_fn, klo, khi, self.n_gl, self.n_gl_low, off)
                     kids.append(_Cell(klo, khi, pts, W, v, float(e.max()), c.depth + 1))
             child_sum = sum(k.val for k in kids)
             totals = totals - c.val + child_sum
             for k in kids:
                 heapq.heappush(heap, k)
             n_cells += 3
-            history.append({"n_cells": n_cells,
-                            "mass": float(totals[0]),
-                            "step_change_rel": float(np.max(np.abs(child_sum - c.val)
-                                                            / np.maximum(np.abs(totals), 1e-300))),
-                            "outstanding_rel": float(sum(k.err for k in heap)
-                                                     / max(float(np.max(np.abs(totals))), 1e-300))})
+            history.append(
+                {
+                    "n_cells": n_cells,
+                    "mass": float(totals[0]),
+                    "step_change_rel": float(np.max(np.abs(child_sum - c.val) / np.maximum(np.abs(totals), 1e-300))),
+                    "outstanding_rel": float(sum(k.err for k in heap) / max(float(np.max(np.abs(totals))), 1e-300)),
+                }
+            )
         outstanding = float(sum(c.err for c in heap))
-        return list(heap), {"n_cells": n_cells, "totals": totals, "log_offset": off,
-                            "outstanding_error": outstanding,
-                            "outstanding_relative": outstanding
-                            / max(float(np.max(np.abs(totals))), 1e-300),
-                            "converged": bool(outstanding <= rtol
-                                              * max(float(np.max(np.abs(totals))), 1e-300)),
-                            "refinements": len(history), "history": history[-60:]}
+        return list(heap), {
+            "n_cells": n_cells,
+            "totals": totals,
+            "log_offset": off,
+            "outstanding_error": outstanding,
+            "outstanding_relative": outstanding / max(float(np.max(np.abs(totals))), 1e-300),
+            "converged": bool(outstanding <= rtol * max(float(np.max(np.abs(totals))), 1e-300)),
+            "refinements": len(history),
+            "history": history[-60:],
+        }
 
     def _frame_mass(self, post, refine_fn, lo, hi, mu0, sd, span, grow, off, frame_cells=1200):
         """Integrate the frame between this rectangle and one `grow` times wider, adaptively.
@@ -213,15 +233,16 @@ class AdaptiveQuadrature:
         """
         LO, HI = mu0 - span * grow * sd, mu0 + span * grow * sd
         total, unresolved = None, 0.0
-        boxes = [(np.array([LO[0], LO[1]]), np.array([HI[0], lo[1]])),
-                 (np.array([LO[0], hi[1]]), np.array([HI[0], HI[1]])),
-                 (np.array([LO[0], lo[1]]), np.array([lo[0], hi[1]])),
-                 (np.array([hi[0], lo[1]]), np.array([HI[0], hi[1]]))]
+        boxes = [
+            (np.array([LO[0], LO[1]]), np.array([HI[0], lo[1]])),
+            (np.array([LO[0], hi[1]]), np.array([HI[0], HI[1]])),
+            (np.array([LO[0], lo[1]]), np.array([lo[0], hi[1]])),
+            (np.array([hi[0], lo[1]]), np.array([HI[0], hi[1]])),
+        ]
         for blo, bhi in boxes:
             if np.any(bhi <= blo):
                 continue
-            _leaves, info = self._refine_box(post, refine_fn, blo, bhi, 1e-6,
-                                             frame_cells, 3, off)
+            _leaves, info = self._refine_box(post, refine_fn, blo, bhi, 1e-6, frame_cells, 3, off)
             total = info["totals"] if total is None else total + info["totals"]
             unresolved = max(unresolved, float(info["outstanding_error"]))
         if total is None:
@@ -232,19 +253,25 @@ class AdaptiveQuadrature:
     def moments(self, fn):
         F = np.asarray(fn(self.nodes), float).reshape(self.nodes.shape[0], -1)
         m = self.w @ F
-        v = self.w @ (F ** 2) - m ** 2
+        v = self.w @ (F**2) - m**2
         return m, np.maximum(v, 0.0)
 
     def diagnostics(self):
-        return {"reference": "adaptive_partition",
-                "n_nodes": self.n_nodes, "n_cells": self.n_cells,
-                "n_gl": self.n_gl, "n_gl_low": self.n_gl_low,
-                "span_sd": self.span, "expansions": self.expansion_log,
-                "tail_relative": float(self.tail_relative),
-                "tail_unresolved_relative": float(self.tail_unresolved_relative),
-                "mesh_outstanding_relative": float(self.refine_info["outstanding_relative"]),
-                "mesh_converged": bool(self.refine_info["converged"]),
-                "refinements": int(self.refine_info["refinements"]),
-                "refinement_history": self.refine_info["history"],
-                "effective_nodes": self.ess, "max_node_weight": self.max_node_weight,
-                "log_unnormalised_evidence": self.mass_log}
+        return {
+            "reference": "adaptive_partition",
+            "n_nodes": self.n_nodes,
+            "n_cells": self.n_cells,
+            "n_gl": self.n_gl,
+            "n_gl_low": self.n_gl_low,
+            "span_sd": self.span,
+            "expansions": self.expansion_log,
+            "tail_relative": float(self.tail_relative),
+            "tail_unresolved_relative": float(self.tail_unresolved_relative),
+            "mesh_outstanding_relative": float(self.refine_info["outstanding_relative"]),
+            "mesh_converged": bool(self.refine_info["converged"]),
+            "refinements": int(self.refine_info["refinements"]),
+            "refinement_history": self.refine_info["history"],
+            "effective_nodes": self.ess,
+            "max_node_weight": self.max_node_weight,
+            "log_unnormalised_evidence": self.mass_log,
+        }

@@ -28,11 +28,11 @@ class Moments:
     error was supplied; ``cross`` never does (independent noise).
     """
 
-    mean: jnp.ndarray            # (B, d_y)
-    cov: jnp.ndarray             # (B, d_y, d_y)
-    mean_prime: jnp.ndarray | None      # (M, d_y) or None
-    cov_prime: jnp.ndarray | None       # (M, d_y, d_y) or None
-    cross: jnp.ndarray | None           # (B, M, d_y, d_y) or None
+    mean: jnp.ndarray  # (B, d_y)
+    cov: jnp.ndarray  # (B, d_y, d_y)
+    mean_prime: jnp.ndarray | None  # (M, d_y) or None
+    cov_prime: jnp.ndarray | None  # (M, d_y, d_y) or None
+    cross: jnp.ndarray | None  # (B, M, d_y, d_y) or None
 
 
 def _outputs(model, samples, x):
@@ -41,8 +41,7 @@ def _outputs(model, samples, x):
     return values.reshape(values.shape[0], values.shape[1], -1)
 
 
-def mc_moments(model, mean, cov, x, x_prime=None, measurement_error=None,
-               num_samples=4000, key=jax.random.PRNGKey(0)):
+def mc_moments(model, mean, cov, x, x_prime=None, measurement_error=None, num_samples=4000, key=jax.random.PRNGKey(0)):
     """Monte Carlo moments of ``f(z, x)`` and ``f(z, x')`` under ``z ~ N(mean, cov)``.
 
     The same parameter samples are used at ``x`` and ``x_prime``, so the
@@ -96,12 +95,12 @@ def filter_moments(filt, x, x_prime=None):
     if isinstance(filt, EKF):
         z, sigma = filt.state_prior
         z = jnp.asarray(z).reshape(-1, 1)
-        jac_x = filt.model.jacobian(z, x)                          # (B, d_y, n)
+        jac_x = filt.model.jacobian(z, x)  # (B, d_y, n)
         mean_x = filt.model(z, x).reshape(x.shape[0], -1)
         cov_x = jac_x @ sigma @ jnp.matrix_transpose(jac_x) + filt.measurement_error
         if x_prime is None:
             return Moments(mean_x, cov_x, None, None, None)
-        jac_p = filt.model.jacobian(z, x_prime)                    # (M, d_y, n)
+        jac_p = filt.model.jacobian(z, x_prime)  # (M, d_y, n)
         mean_p = filt.model(z, x_prime).reshape(x_prime.shape[0], -1)
         cov_p = jac_p @ sigma @ jnp.matrix_transpose(jac_p) + filt.measurement_error
         cross = jnp.einsum("mai,ij,bcj->bmac", jac_p, sigma, jac_x)
@@ -133,13 +132,22 @@ def moment_errors(approx: Moments, reference: Moments):
     covariance at the candidates), ``cov_prime`` (diagonal at the pool) and
     ``cross`` (all cross-covariances), each a scalar.
     """
+
     def rms(a, b):
         return float(jnp.sqrt(jnp.mean((jnp.asarray(a) - jnp.asarray(b)) ** 2)))
-    out = {"mean": rms(approx.mean, reference.mean),
-           "var": rms(jnp.diagonal(approx.cov, axis1=-2, axis2=-1), jnp.diagonal(reference.cov, axis1=-2, axis2=-1))}
-    if approx.cross is not None and reference.cross is not None \
-            and approx.cov_prime is not None and reference.cov_prime is not None:
-        out["cov_prime"] = rms(jnp.diagonal(approx.cov_prime, axis1=-2, axis2=-1),
-                               jnp.diagonal(reference.cov_prime, axis1=-2, axis2=-1))
+
+    out = {
+        "mean": rms(approx.mean, reference.mean),
+        "var": rms(jnp.diagonal(approx.cov, axis1=-2, axis2=-1), jnp.diagonal(reference.cov, axis1=-2, axis2=-1)),
+    }
+    if (
+        approx.cross is not None
+        and reference.cross is not None
+        and approx.cov_prime is not None
+        and reference.cov_prime is not None
+    ):
+        out["cov_prime"] = rms(
+            jnp.diagonal(approx.cov_prime, axis1=-2, axis2=-1), jnp.diagonal(reference.cov_prime, axis1=-2, axis2=-1)
+        )
         out["cross"] = rms(approx.cross, reference.cross)
     return out

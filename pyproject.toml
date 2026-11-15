@@ -36,9 +36,9 @@ addopts = "-s"
 line-length = 120
 
 [tool.ruff.lint]
-# Correctness, plus the mechanical cleanups that carry no behaviour change. This is a research
-# codebase written in a deliberately dense style (compact statements, long lines, semicolons),
-# so the heavy stylistic rule sets stay off rather than mass-reformatting the analysis code.
+# Correctness, plus the stylistic rules the tree is now actually formatted to.
+# `ruff format` is enforced separately (pre-commit + CI), so E501/E7 are only linted
+# where they can genuinely be honoured.
 select = [
   "E4",     # duplicate names in imports
   "E7",     # statement-level mistakes (redefinition, comparison abuse)
@@ -50,16 +50,21 @@ select = [
   "RUF046", # redundant int() around a length
   "RUF022", # unsorted __all__
   "I001",   # unsorted / unsplit imports
+  "E501",   # line length (honoured; the analysis scripts relax it below)
+  "E701",   # multiple statements on one line (colon)
+  "E702",   # multiple statements on one line (semicolon)
+  "E731",   # lambda assignment
+  "E741",   # ambiguous variable name (l, I, O)
+  "E401",   # multiple imports on one line
 ]
-ignore = [
-  "E401",  # multiple imports on one line — compact style used throughout
-  "E402",  # imports after code — deliberate in the experiment scripts
-  "E501",  # line length — the codebase uses long lines by design
-  "E701",  # multiple statements on one line (colon)
-  "E702",  # multiple statements on one line (semicolon)
-  "E731",  # lambda assignment
-  "E741",  # ambiguous variable name (l, I, O)
-]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# The investigation scripts set process-wide state before importing the library
+# (`jax.config.update("jax_enable_x64", True)` must precede the bed imports or x64 does
+# not apply), and format long tabular result lines as single strings. Both are deliberate
+# and cannot be fixed without changing behaviour or hurting readability.
+"experiments/**" = ["E402", "E501"]
 
 [tool.ty.environment]
 python-version = "3.12"

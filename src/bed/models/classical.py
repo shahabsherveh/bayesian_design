@@ -28,12 +28,12 @@ class LinearGaussianModel:
     """
 
     def __init__(
-            self,
-            sigma,
-            theta,
-            X,
-            observable_designs: list[int] | None = None,
-            R=np.eye(2),
+        self,
+        sigma,
+        theta,
+        X,
+        observable_designs: list[int] | None = None,
+        R=np.eye(2),
     ):
         """
         Initialize Linear Gaussian Model.
@@ -68,10 +68,8 @@ class LinearGaussianModel:
             Array of shape (m, k) where m is number of valid allocations and k is
             number of design points. Each row sums to n.
         """
-        search_space_all = np.array(np.meshgrid(
-            *[np.arange(n)] * n)).T.reshape(-1, n)
-        search_space_filtered = search_space_all[search_space_all.sum(
-            axis=1) == n]
+        search_space_all = np.array(np.meshgrid(*[np.arange(n)] * n)).T.reshape(-1, n)
+        search_space_filtered = search_space_all[search_space_all.sum(axis=1) == n]
         return search_space_filtered
 
     @staticmethod
@@ -87,10 +85,7 @@ class LinearGaussianModel:
         Returns:
             Array of shape (nx*ny, 2) containing all grid points
         """
-        xx, yy = np.meshgrid(
-            np.linspace(-1, 1, design_dim[0]
-                        ), np.linspace(-1, 1, design_dim[1])
-        )
+        xx, yy = np.meshgrid(np.linspace(-1, 1, design_dim[0]), np.linspace(-1, 1, design_dim[1]))
         return np.column_stack([xx.flatten(), yy.flatten()])
 
     def generate_outcomes(self, x: np.ndarray) -> np.ndarray:
@@ -185,14 +180,10 @@ class LinearGaussianModel:
             CVXPy Problem object that can be solved with problem.solve()
         """
         # Decision variable: allocation weights (must be non-negative)
-        eta = cp.Variable(len(self.observable_designs),
-                          nonneg=True, name="eta")
+        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
 
         # Construct moment matrix as weighted sum of information matrices
-        moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i]
-                for i in range(len(self.info_matrices))]
-        )
+        moment_matrix = cp.sum([eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))])
 
         # D-optimal criterion: minimize -log(det(R + M))
         # Negative sign converts maximization to minimization
@@ -218,14 +209,10 @@ class LinearGaussianModel:
             Solved CVXPy Problem object with optimal allocation in problem.var_dict["eta"]
         """
         # Decision variable: allocation weights (must be non-negative)
-        eta = cp.Variable(len(self.observable_designs),
-                          nonneg=True, name="eta")
+        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
 
         # Construct moment matrix as weighted sum of information matrices
-        moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i]
-                for i in range(len(self.info_matrices))]
-        )
+        moment_matrix = cp.sum([eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))])
 
         # A-optimal criterion: minimize trace((R + M)^{-1})
         # Uses CVXPy's built-in trace of inverse function
@@ -250,6 +237,7 @@ class LinearGaussianModel:
             problem: Solved CVXPy problem containing optimal eta values
         """
         import matplotlib.pyplot as plt
+
         eta = np.asarray(problem.var_dict["eta"].value, dtype=float).round(2)
         plt.scatter(
             self.observable_designs[:, 0],
@@ -373,7 +361,5 @@ def generate_full_design_matrix(design_dim: tuple[int, int]) -> np.ndarray:
         >>> X.shape
         (25, 2)
     """
-    xx, yy = np.meshgrid(
-        np.linspace(-1, 1, design_dim[0]), np.linspace(-1, 1, design_dim[1])
-    )
+    xx, yy = np.meshgrid(np.linspace(-1, 1, design_dim[0]), np.linspace(-1, 1, design_dim[1]))
     return np.column_stack([xx.flatten(), yy.flatten()])

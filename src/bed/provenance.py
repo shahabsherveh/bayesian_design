@@ -26,8 +26,16 @@ def source_revision(root=None):
         parts = marker.read_text().split()
         return parts[0], (len(parts) > 1 and parts[1] == "dirty")
     try:
-        sha = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
-        dirty = bool(subprocess.check_output(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"], text=True, stderr=subprocess.DEVNULL).strip())
+        sha = subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+        dirty = bool(
+            subprocess.check_output(
+                ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        )
         return sha, dirty
     except Exception:
         return "unknown", True
@@ -49,19 +57,40 @@ def versions():
 
 def manifest(config, extra=None):
     sha, dirty = source_revision()
-    m = {"source_sha": sha, "source_dirty": dirty, "config": config, "config_hash": config_hash(config),
-         "versions": versions(), "host": socket.gethostname(), "platform": platform.platform(),
-         "time_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "argv": sys.argv,
-         "slurm": {k: v for k, v in os.environ.items() if k.startswith("SLURM_") and k in
-                   ("SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID", "SLURM_CPUS_PER_TASK", "SLURM_JOB_NODELIST", "SLURM_MEM_PER_CPU")},
-         "package_path": str(Path(__file__).resolve().parent)}
+    m = {
+        "source_sha": sha,
+        "source_dirty": dirty,
+        "config": config,
+        "config_hash": config_hash(config),
+        "versions": versions(),
+        "host": socket.gethostname(),
+        "platform": platform.platform(),
+        "time_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "argv": sys.argv,
+        "slurm": {
+            k: v
+            for k, v in os.environ.items()
+            if k.startswith("SLURM_")
+            and k
+            in (
+                "SLURM_JOB_ID",
+                "SLURM_ARRAY_JOB_ID",
+                "SLURM_ARRAY_TASK_ID",
+                "SLURM_CPUS_PER_TASK",
+                "SLURM_JOB_NODELIST",
+                "SLURM_MEM_PER_CPU",
+            )
+        },
+        "package_path": str(Path(__file__).resolve().parent),
+    }
     if extra:
         m.update(extra)
     return m
 
 
 def write_json_atomic(path, obj):
-    path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
     with open(tmp, "w") as f:
         json.dump(obj, f, indent=1, default=_default)
@@ -71,6 +100,7 @@ def write_json_atomic(path, obj):
 def _default(o):
     try:
         import numpy as np
+
         if isinstance(o, np.ndarray):
             return o.tolist()
         if isinstance(o, (np.floating, np.integer)):
@@ -111,10 +141,13 @@ class Timer:
     """Wall-clock and process-CPU time of a block, for the cost accounting in every result."""
 
     def __enter__(self):
-        self.t0 = time.time(); self.c0 = time.process_time(); return self
+        self.t0 = time.time()
+        self.c0 = time.process_time()
+        return self
 
     def __exit__(self, *a):
-        self.wall = time.time() - self.t0; self.cpu = time.process_time() - self.c0
+        self.wall = time.time() - self.t0
+        self.cpu = time.process_time() - self.c0
 
     def as_dict(self):
         return {"wall_s": self.wall, "cpu_s": self.cpu}

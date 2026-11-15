@@ -74,8 +74,7 @@ spec-approval gate.
 
 ### Still open
 
-- [ ] 7. (Optional) Enable stylistic ruff rules after a deliberate `ruff format` pass.
-  **Not started** — would mass-rewrite ~every file (526 `E702`, 290 `E501`, 957
-  findings); needs its own spec and an explicit reformat decision.
+- [x] 7. Enabled the stylistic ruff rules and ran `ruff format` over the tree, with
+  `ruff format --check` enforced in pre-commit and CI so it cannot drift back (#22).
 - [x] 8. Typing pass on `src/` cleared all 74 `ty` diagnostics and flipped the gate to
   `--error-on-warning` (#21).

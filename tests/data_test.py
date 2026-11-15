@@ -44,10 +44,7 @@ def test_data_from_npy_and_to_npy():
     y_test = jnp.array([[20.0]])
     data = Data(x_train, y_train, x_test, y_test)
     with tempfile.TemporaryDirectory() as tmpdir:
-        paths = [
-            os.path.join(tmpdir, f)
-            for f in ["xtr.npy", "ytr.npy", "xte.npy", "yte.npy"]
-        ]
+        paths = [os.path.join(tmpdir, f) for f in ["xtr.npy", "ytr.npy", "xte.npy", "yte.npy"]]
         data.to_npy(*paths)
         loaded = Data.from_npy(*paths)
         assert jnp.allclose(loaded.x_train, x_train)

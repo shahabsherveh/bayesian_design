@@ -51,9 +51,7 @@ class Data:
         self.x_test_glob = x_test_pool if x_test_glob is None else x_test_glob
         self.y_test_glob = y_test_pool if y_test_glob is None else y_test_glob
         self.underlying_model = underlying_model
-        self.measurement_noise_std = (
-            measurement_noise_std if measurement_noise_std is not None else 0.0
-        )
+        self.measurement_noise_std = measurement_noise_std if measurement_noise_std is not None else 0.0
         self._observation_key = jax.random.PRNGKey(0)
 
     @property
@@ -112,17 +110,12 @@ class Data:
                 if jnp.any(test_matches):
                     return self.y_test_pool[jnp.argmax(test_matches)]
                 raise ValueError(
-                    "A design requires an underlying_model unless it is stored "
-                    "in the training or test pool."
+                    "A design requires an underlying_model unless it is stored in the training or test pool."
                 )
             obs = _evaluate_model(self.underlying_model, index).squeeze()
             if has_noise:
-                self._observation_key, noise_key = jax.random.split(
-                    self._observation_key
-                )
-                noise = self.measurement_noise_std * jax.random.normal(
-                    shape=obs.shape, key=noise_key
-                )
+                self._observation_key, noise_key = jax.random.split(self._observation_key)
+                noise = self.measurement_noise_std * jax.random.normal(shape=obs.shape, key=noise_key)
             else:
                 noise = 0.0
             obs = (obs + noise).squeeze()
@@ -144,8 +137,7 @@ def create_synthetic_data(
     """Generate Gaussian design points with an optional informative subspace."""
     eigs = jnp.full(fill_value=embedding_noise_std, shape=input_dim)
     eigs = eigs.at[:embedding_dim].set(
-        (input_dim / embedding_dim)
-        - (embedding_noise_std * (input_dim - embedding_dim) / embedding_dim)
+        (input_dim / embedding_dim) - (embedding_noise_std * (input_dim - embedding_dim) / embedding_dim)
     )
     eigs = eigs.at[embedding_dim:].set(embedding_noise_std)
     cov = jnp.ones_like(eigs)
@@ -168,8 +160,7 @@ def create_synthetic_data(
 
     design_mean = jnp.zeros(input_dim)
 
-    key_train, key_test, key_noise_train, key_noise_test = jax.random.split(
-        key, 4)
+    key_train, key_test, key_noise_train, key_noise_test = jax.random.split(key, 4)
     x_train = jax.random.multivariate_normal(
         mean=design_mean,
         cov=design_cov,
@@ -184,19 +175,11 @@ def create_synthetic_data(
         key=key_test,
         method="svd",
     )[:, None, None, :]
-    noise_train = measurement_noise_std * jax.random.normal(
-        shape=(num_train, output_dim), key=key_noise_train
-    )
-    noise_test = measurement_noise_std * jax.random.normal(
-        shape=(num_test, output_dim), key=key_noise_test
-    )
+    noise_train = measurement_noise_std * jax.random.normal(shape=(num_train, output_dim), key=key_noise_train)
+    noise_test = measurement_noise_std * jax.random.normal(shape=(num_test, output_dim), key=key_noise_test)
 
-    y_train = _reshape_outputs(
-        _evaluate_model(model, x_train), num_train
-    )
-    y_test = _reshape_outputs(
-        _evaluate_model(model, x_test), num_test
-    )
+    y_train = _reshape_outputs(_evaluate_model(model, x_train), num_train)
+    y_test = _reshape_outputs(_evaluate_model(model, x_test), num_test)
     y_train = y_train + noise_train
     y_test = y_test + noise_test
     return Data(x_train, y_train, x_test, y_test, underlying_model=model)
@@ -245,29 +228,22 @@ def create_synthetic_normal_mixture_data_1D(
 
     design_cov = jnp.diag(vars)
     keys = iter(jax.random.split(key, 2 * len(vars) + 4))
-    x_train = jax.random.normal(
-        shape=(num_train,), key=next(keys)) * vars[0] + means[0]
+    x_train = jax.random.normal(shape=(num_train,), key=next(keys)) * vars[0] + means[0]
     for i in range(1, len(vars)):
         x_train = jnp.append(
             x_train,
-            jax.random.normal(shape=(num_train,), key=next(keys)) *
-            vars[i] + means[i],
+            jax.random.normal(shape=(num_train,), key=next(keys)) * vars[i] + means[i],
         )
     x_train = x_train[:, None, None, None]
-    x_test = jax.random.normal(
-        shape=(num_test,), key=next(keys)
-    ) * vars[0] + means[0]
+    x_test = jax.random.normal(shape=(num_test,), key=next(keys)) * vars[0] + means[0]
     for i in range(1, len(vars)):
         x_test = jnp.append(
             x_test,
-            jax.random.normal(
-                shape=(num_test,), key=next(keys)
-            ) * vars[i] + means[i],
+            jax.random.normal(shape=(num_test,), key=next(keys)) * vars[i] + means[i],
         )
     x_test = x_test[:, None, None, None]
     if extra_points is not None:
-        x_train = jnp.append(
-            x_train, extra_points[:, None, None, None], axis=0)
+        x_train = jnp.append(x_train, extra_points[:, None, None, None], axis=0)
     if num_val > 0:
         x_val = jax.random.multivariate_normal(
             mean=means,
@@ -285,9 +261,7 @@ def create_synthetic_normal_mixture_data_1D(
     noise_train = measurement_noise_std * jax.random.normal(
         shape=(len(vars) * num_train + extra_count, 1, 1, 1), key=next(keys)
     )
-    noise_test = measurement_noise_std * jax.random.normal(
-        shape=(len(vars) * num_test, 1, 1, 1), key=next(keys)
-    )
+    noise_test = measurement_noise_std * jax.random.normal(shape=(len(vars) * num_test, 1, 1, 1), key=next(keys))
     y_train = _evaluate_model(model, x_train) + noise_train
     y_test = _evaluate_model(model, x_test) + noise_test
     return Data(
@@ -318,9 +292,7 @@ def create_synthetic_skewnormal_mixture_data_1D(
 
     design_cov = jnp.diag(vars)
     skews = skews if skews is not None else [0] * len(vars)
-    x_train = stats.skewnorm.rvs(
-        size=num_train, loc=means[0], scale=vars[0] ** 0.5, a=skews[0]
-    )
+    x_train = stats.skewnorm.rvs(size=num_train, loc=means[0], scale=vars[0] ** 0.5, a=skews[0])
     for i in range(1, len(vars)):
         x_train = jnp.append(
             x_train,
@@ -332,9 +304,7 @@ def create_synthetic_skewnormal_mixture_data_1D(
             ),
         )
     x_train = x_train[:, None, None, None]
-    x_test = stats.skewnorm.rvs(
-        size=num_test, loc=means[0], scale=vars[0] ** 0.5, a=skews[0]
-    )
+    x_test = stats.skewnorm.rvs(size=num_test, loc=means[0], scale=vars[0] ** 0.5, a=skews[0])
     for i in range(1, len(vars)):
         x_test = jnp.append(
             x_test,
@@ -347,8 +317,7 @@ def create_synthetic_skewnormal_mixture_data_1D(
         )
     x_test = x_test[:, None, None, None]
     if extra_points is not None:
-        x_train = jnp.append(
-            x_train, extra_points[:, None, None, None], axis=0)
+        x_train = jnp.append(x_train, extra_points[:, None, None, None], axis=0)
     if num_val > 0:
         x_val = jax.random.multivariate_normal(
             mean=means,
@@ -366,9 +335,7 @@ def create_synthetic_skewnormal_mixture_data_1D(
     noise_train = measurement_noise_std * jax.random.normal(
         shape=(len(vars) * num_train + extra_count, 1, 1, 1), key=key
     )
-    noise_test = measurement_noise_std * jax.random.normal(
-        shape=(len(vars) * num_test, 1, 1, 1), key=key
-    )
+    noise_test = measurement_noise_std * jax.random.normal(shape=(len(vars) * num_test, 1, 1, 1), key=key)
     y_train = _evaluate_model(model, x_train) + noise_train
     y_test = _evaluate_model(model, x_test) + noise_test
     return Data(
@@ -393,19 +360,11 @@ def create_synthetic_fatailed_data_1D(
     key=jax.random.PRNGKey(0),
 ) -> Data:
     """Generate one-dimensional heavy-tailed data from Student's t samples."""
-    x_train = (
-        jax.random.t(df=df, shape=(num_train,), key=key)[
-            :, None, None, None] - mean
-    )
-    x_test = jax.random.t(df=df, shape=(num_test,), key=key)[
-        :, None, None, None] - mean
+    x_train = jax.random.t(df=df, shape=(num_train,), key=key)[:, None, None, None] - mean
+    x_test = jax.random.t(df=df, shape=(num_test,), key=key)[:, None, None, None] - mean
 
-    noise_train = measurement_noise_std * jax.random.normal(
-        shape=(num_train, 1, 1, 1), key=key
-    )
-    noise_test = measurement_noise_std * jax.random.normal(
-        shape=(num_test, 1, 1, 1), key=key
-    )
+    noise_train = measurement_noise_std * jax.random.normal(shape=(num_train, 1, 1, 1), key=key)
+    noise_test = measurement_noise_std * jax.random.normal(shape=(num_test, 1, 1, 1), key=key)
     y_train = _evaluate_model(model, x_train) + noise_train
     y_test = _evaluate_model(model, x_test) + noise_test
     return Data(x_train, y_train, x_test, y_test, underlying_model=model)
@@ -415,6 +374,7 @@ def get_mnist_data(num_train: int, num_test: int, batch_size: int = 32) -> Data:
     """Load and normalize MNIST images, returning one-hot encoded labels."""
     import tensorflow as tf
     import tensorflow_datasets as tfds
+
     train_ds: tf.data.Dataset = tfds.load("mnist", split="train")
     test_ds: tf.data.Dataset = tfds.load("mnist", split="test")
     train_ds = train_ds.map(
@@ -457,11 +417,7 @@ def get_mnist_data(num_train: int, num_test: int, batch_size: int = 32) -> Data:
 
 
 def get_uci_data(
-    dataset: str,
-    test_size: int | float,
-    test_pool_quantile: float = .75,
-    random_state: int = 0,
-    **kwargs
+    dataset: str, test_size: int | float, test_pool_quantile: float = 0.75, random_state: int = 0, **kwargs
 ):
     """Load a UCI dataset and split its test set into pool and global subsets."""
     # fetch dataset
@@ -469,17 +425,16 @@ def get_uci_data(
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import StandardScaler
     from ucimlrepo import fetch_ucirepo
+
     uci_data = fetch_ucirepo(dataset)
 
     x = uci_data.data.features
     x = jnp.array(StandardScaler().fit_transform(x))[:, None, None, :]
     # Targets are standardized as well, so the measurement variance in the
     # configs and the reported RMSE are in units of the target's standard deviation.
-    y = np.asarray(uci_data.data.targets.values,
-                   dtype=float).reshape(len(x), -1)
+    y = np.asarray(uci_data.data.targets.values, dtype=float).reshape(len(x), -1)
     y = jnp.array(StandardScaler().fit_transform(y))[:, None, None, :]
-    x_train, x_test, y_train, y_test = train_test_split(
-        x, y, test_size=test_size, random_state=random_state)
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=test_size, random_state=random_state)
     pca = PCA(1)
     projections = pca.fit_transform(x_test.squeeze())
     q = jnp.quantile(projections, q=test_pool_quantile)
@@ -491,26 +446,30 @@ def get_uci_data(
     return Data(x_train, y_train, x_test_pool, y_test_pool, x_test_glob, y_test_glob)
 
 
-def get_1d_regression(model, train_size=200, test_pool_size=50, test_glob_size=50, interval_train=[-5, 5], interval_test_pool=[2, 4], key=jax.random.key(0)):
+def get_1d_regression(
+    model,
+    train_size=200,
+    test_pool_size=50,
+    test_glob_size=50,
+    interval_train=[-5, 5],
+    interval_test_pool=[2, 4],
+    key=jax.random.key(0),
+):
     keys = jax.random.split(key, 3)
-    x_train_0 = jax.random.uniform(shape=(train_size, 1, 1, 1),
-                                   minval=interval_train[0], maxval=interval_test_pool[0], key=keys[0])
-    x_train_1 = jax.random.uniform(shape=(train_size, 1, 1, 1),
-                                   minval=interval_test_pool[1], maxval=interval_train[1], key=keys[0])
+    x_train_0 = jax.random.uniform(
+        shape=(train_size, 1, 1, 1), minval=interval_train[0], maxval=interval_test_pool[0], key=keys[0]
+    )
+    x_train_1 = jax.random.uniform(
+        shape=(train_size, 1, 1, 1), minval=interval_test_pool[1], maxval=interval_train[1], key=keys[0]
+    )
     x_train = jnp.concat([x_train_0, x_train_1], axis=0)
     y_train = _evaluate_model(model, x_train)
-    x_test_glob = jax.random.uniform(shape=(test_glob_size, 1, 1, 1),
-                                     minval=interval_train[0], maxval=interval_train[1], key=keys[1])
-    y_test_glob = _evaluate_model(model, x_test_glob)
-    x_test_pool = jax.random.uniform(shape=(
-        test_pool_size, 1, 1, 1), minval=interval_test_pool[0], maxval=interval_test_pool[1], key=keys[2])
-    y_test_pool = _evaluate_model(model, x_test_pool)
-    return Data(
-        x_train,
-        y_train,
-        x_test_pool,
-        y_test_pool,
-        x_test_glob,
-        y_test_glob,
-        underlying_model=model
+    x_test_glob = jax.random.uniform(
+        shape=(test_glob_size, 1, 1, 1), minval=interval_train[0], maxval=interval_train[1], key=keys[1]
     )
+    y_test_glob = _evaluate_model(model, x_test_glob)
+    x_test_pool = jax.random.uniform(
+        shape=(test_pool_size, 1, 1, 1), minval=interval_test_pool[0], maxval=interval_test_pool[1], key=keys[2]
+    )
+    y_test_pool = _evaluate_model(model, x_test_pool)
+    return Data(x_train, y_train, x_test_pool, y_test_pool, x_test_glob, y_test_glob, underlying_model=model)

@@ -21,6 +21,7 @@ Reported alongside every result: the integrated mass, which is 1 only if the nod
 posterior, and the largest single node weight, which is small only if the mass is resolved rather
 than concentrated on one point. Neither is renormalised away.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -39,6 +40,7 @@ def enable_double_precision():
     before the first JAX array is created, so experiment entry points call it first.
     """
     import jax
+
     jax.config.update("jax_enable_x64", True)
     return bool(jax.config.read("jax_enable_x64"))
 
@@ -49,15 +51,15 @@ def _laplace_modes(post, z_inits, tol=1e-3):
     Returns `(found, log)`. Optimiser failures are counted rather than swallowed: a silent `except`
     cannot establish that the search converged, and the count belongs in the diagnostics.
     """
-    found, log = [], {"starts": len(list(z_inits)), "optimiser_failures": 0,
-                      "nonfinite": 0, "duplicates": 0}
+    found, log = [], {"starts": len(list(z_inits)), "optimiser_failures": 0, "nonfinite": 0, "duplicates": 0}
     for z0 in z_inits:
         try:
             m, S, _ = ref.map_laplace(post, [np.asarray(z0, float)])
         except Exception:
             log["optimiser_failures"] += 1
             continue
-        m = np.asarray(m, float); S = np.asarray(S, float)
+        m = np.asarray(m, float)
+        S = np.asarray(S, float)
         if not np.all(np.isfinite(m)) or not np.all(np.isfinite(S)):
             log["nonfinite"] += 1
             continue
@@ -88,8 +90,7 @@ def mode_starts(post, mu0, S0, extra=(), per_axis=7, span=2.5, seed=0):
     d = mu0.size
     ax = np.linspace(-span, span, per_axis)
     grid = np.stack([g.ravel() for g in np.meshgrid(*([ax] * d), indexing="ij")], axis=1)
-    return ([mu0] + [np.asarray(e, float) for e in extra]
-            + [mu0 + L0 @ u for u in grid])
+    return [mu0] + [np.asarray(e, float) for e in extra] + [mu0 + L0 @ u for u in grid]
 
 
 def gauss_hermite(n):
@@ -106,8 +107,19 @@ class ModeQuadrature:
     mixture mass before that normalisation and is reported, never used to hide truncation.
     """
 
-    def __init__(self, post, mu0, S0, n_per_axis=24, max_modes=4, seed=0, extra_starts=(),
-                 inflate=2.0, coverage_weight=0.0, min_component_weight=1e-6):
+    def __init__(
+        self,
+        post,
+        mu0,
+        S0,
+        n_per_axis=24,
+        max_modes=4,
+        seed=0,
+        extra_starts=(),
+        inflate=2.0,
+        coverage_weight=0.0,
+        min_component_weight=1e-6,
+    ):
         """`inflate` widens each mode's Laplace covariance and `coverage_weight` adds one broad
         component with the prior covariance.
 
@@ -137,7 +149,8 @@ class ModeQuadrature:
         logdet_all = np.array([np.linalg.slogdet(m[1])[1] for m in all_modes])
         logpi_all = -obj_all + 0.5 * logdet_all
         logpi_all -= logpi_all.max()
-        pi_all = np.exp(logpi_all); pi_all /= pi_all.sum()
+        pi_all = np.exp(logpi_all)
+        pi_all /= pi_all.sum()
         order = np.argsort(-pi_all)
         self.n_modes_found = len(all_modes)
         self.search_log["n_found_before_truncation"] = len(all_modes)
@@ -145,13 +158,15 @@ class ModeQuadrature:
         kept = order[:max_modes]
         self.search_log["mass_dropped_by_mode_cap"] = float(pi_all[order[max_modes:]].sum())
         modes = [all_modes[i] for i in kept]
-        pi = pi_all[kept]; pi = pi / pi.sum()
+        pi = pi_all[kept]
+        pi = pi / pi.sum()
         keep = pi >= min_component_weight
         keep[int(np.argmax(pi))] = True
         self.search_log["mass_dropped_by_weight_floor"] = float(pi[~keep].sum())
         self.search_log["n_retained"] = int(keep.sum())
         modes = [m for m, k in zip(modes, keep) if k]
-        pi = pi[keep]; pi = pi / pi.sum()
+        pi = pi[keep]
+        pi = pi / pi.sum()
 
         x1, w1 = gauss_hermite(n_per_axis)
         # The rule's reach is set by `n_per_axis` alone: Gauss-Hermite nodes span about
@@ -159,9 +174,9 @@ class ModeQuadrature:
         # and reported here without entering the construction, so varying it appeared to test
         # domain expansion and tested nothing. It is removed rather than left as a dead control.
         grids = np.meshgrid(*([x1] * d), indexing="ij")
-        U = np.stack([g.ravel() for g in grids], axis=1)                      # (n^d, d)
+        U = np.stack([g.ravel() for g in grids], axis=1)  # (n^d, d)
         wgrids = np.meshgrid(*([w1] * d), indexing="ij")
-        W = np.prod(np.stack([g.ravel() for g in wgrids], axis=1), axis=1)    # (n^d,)
+        W = np.prod(np.stack([g.ravel() for g in wgrids], axis=1), axis=1)  # (n^d,)
 
         comps = [(m, 0.5 * (S + S.T) * inflate) for (m, S, _o) in modes]
         pi = pi * (1.0 - coverage_weight)
@@ -173,11 +188,12 @@ class ModeQuadrature:
         pi = pi / pi.sum()
 
         nodes, Ls, means = [], [], []
-        for (m, S) in comps:
+        for m, S in comps:
             ev, V = np.linalg.eigh(S)
             ev = np.maximum(ev, 1e-12 * max(ev.max(), 1e-12))
             L = V @ np.diag(np.sqrt(ev))
-            Ls.append(L); means.append(m)
+            Ls.append(L)
+            means.append(m)
             nodes.append(m[None, :] + U @ L.T)
         nodes = np.concatenate(nodes, axis=0)
         self.n_modes = len(modes)
@@ -202,8 +218,12 @@ class ModeQuadrature:
         logq = np.full(nodes.shape[0], -np.inf)
         for k, (m, L) in enumerate(zip(means, Ls)):
             sol = np.linalg.solve(L, (nodes - m[None, :]).T).T
-            lk = (-0.5 * np.sum(sol ** 2, axis=1) - np.log(np.abs(np.linalg.det(L)))
-                  - 0.5 * d * np.log(2 * np.pi) + np.log(pi[k]))
+            lk = (
+                -0.5 * np.sum(sol**2, axis=1)
+                - np.log(np.abs(np.linalg.det(L)))
+                - 0.5 * d * np.log(2 * np.pi)
+                + np.log(pi[k])
+            )
             logq = np.logaddexp(logq, lk)
         logp = post.logp(nodes).ravel()
         lw = np.log(np.maximum(self.base_weight, 1e-300)) + logp - logq
@@ -220,7 +240,7 @@ class ModeQuadrature:
         # has moved to a few nodes and the node set does not resolve it.
         base = self.base_weight / self.base_weight.sum()
         self.weight_concentration_ratio = float(self.w.max() / base.max())
-        self.ess = float(1.0 / np.sum(self.w ** 2))
+        self.ess = float(1.0 / np.sum(self.w**2))
         self.n_nodes = nodes.shape[0]
         self.n_per_axis = n_per_axis
 
@@ -230,25 +250,30 @@ class ModeQuadrature:
         F = np.asarray(fn(self.nodes), float)
         F = F.reshape(self.nodes.shape[0], -1)
         m = self.w @ F
-        v = self.w @ (F ** 2) - m ** 2
+        v = self.w @ (F**2) - m**2
         return m, np.maximum(v, 0.0)
 
     def diagnostics(self):
-        return {"n_nodes": int(self.n_nodes), "n_modes": int(self.n_modes),
-                "n_modes_found": int(self.n_modes_found),
-                "min_component_weight": float(self.min_component_weight),
-                "n_components": int(self.n_components), "inflate": float(self.inflate),
-                "coverage_weight": float(self.coverage_weight),
-                "n_per_axis": int(self.n_per_axis),
-                "node_reach_whitened_sd": float(np.sqrt(2.0 * self.n_per_axis)),
-                "max_node_weight": self.max_node_weight,
-                "weight_concentration_ratio": self.weight_concentration_ratio,
-                "effective_nodes": self.ess,
-                # `log_mass` is the log of the UNNORMALISED posterior integral against the
-                # proposal, that is an evidence estimate up to the posterior's own constant. It is
-                # not a probability and there is no reason for it to be zero.
-                "log_unnormalised_evidence": float(self.mass_log),
-                "mixture_weights": self.pi.tolist(), "search": self.search_log}
+        return {
+            "n_nodes": int(self.n_nodes),
+            "n_modes": int(self.n_modes),
+            "n_modes_found": int(self.n_modes_found),
+            "min_component_weight": float(self.min_component_weight),
+            "n_components": int(self.n_components),
+            "inflate": float(self.inflate),
+            "coverage_weight": float(self.coverage_weight),
+            "n_per_axis": int(self.n_per_axis),
+            "node_reach_whitened_sd": float(np.sqrt(2.0 * self.n_per_axis)),
+            "max_node_weight": self.max_node_weight,
+            "weight_concentration_ratio": self.weight_concentration_ratio,
+            "effective_nodes": self.ess,
+            # `log_mass` is the log of the UNNORMALISED posterior integral against the
+            # proposal, that is an evidence estimate up to the posterior's own constant. It is
+            # not a probability and there is no reason for it to be zero.
+            "log_unnormalised_evidence": float(self.mass_log),
+            "mixture_weights": self.pi.tolist(),
+            "search": self.search_log,
+        }
 
 
 def _cluster_1d(f, w, n_clusters, iters=25):
@@ -269,8 +294,9 @@ def _cluster_1d(f, w, n_clusters, iters=25):
     return np.array([remap[int(k)] for k in lab]), len(keep)
 
 
-def expected_posterior_variance(quad, problem, cands, n_y=64, targets=None, n_clusters=4,
-                                mass_tol=1e-3, max_clusters=12):
+def expected_posterior_variance(
+    quad, problem, cands, n_y=64, targets=None, n_clusters=4, mass_tol=1e-3, max_clusters=12
+):
     """`V(h)` and `E_y[V(h,a,Y)]` for each candidate, by quadrature in both variables.
 
     The predictive at a candidate is exactly a Gaussian mixture with one component per parameter
@@ -296,22 +322,29 @@ def expected_posterior_variance(quad, problem, cands, n_y=64, targets=None, n_cl
     G = np.asarray(problem.target_fn(Z), float).reshape(Z.shape[0], -1) if targets is None else targets
     w = quad.w
     mg = w @ G
-    V_now = float(np.sum(w @ (G ** 2) - mg ** 2))
+    V_now = float(np.sum(w @ (G**2) - mg**2))
 
     import jax
     import jax.numpy as jnp
+
     Xc = jnp.asarray(np.asarray(problem.X)[np.asarray(cands, int)])
     if int(problem.dy) != 1:
         raise NotImplementedError("observation integration is written for scalar observations")
-    F = np.asarray(jax.vmap(lambda z: problem.model(z, Xc))(jnp.asarray(Z, dtype=float)),
-                   dtype=float).reshape(Z.shape[0], len(cands)).T
+    F = (
+        np.asarray(jax.vmap(lambda z: problem.model(z, Xc))(jnp.asarray(Z, dtype=float)), dtype=float)
+        .reshape(Z.shape[0], len(cands))
+        .T
+    )
     r2 = float(np.atleast_2d(problem.R)[0, 0])
     xg, wg = gauss_hermite(n_y)
-    G2 = G ** 2
+    G2 = G**2
     lognorm = -0.5 * np.log(2 * np.pi * r2)
 
-    EV = np.empty(len(cands)); mass = np.empty(len(cands)); used = np.empty(len(cands), dtype=int)
-    ev_raw = np.empty(len(cands)); neg_var = np.zeros(len(cands))
+    EV = np.empty(len(cands))
+    mass = np.empty(len(cands))
+    used = np.empty(len(cands), dtype=int)
+    ev_raw = np.empty(len(cands))
+    neg_var = np.zeros(len(cands))
     for j in range(len(cands)):
         fj = F[j]
         nc = n_clusters
@@ -324,13 +357,13 @@ def expected_posterior_variance(quad, problem, cands, n_y=64, targets=None, n_cl
                 if pk <= 0:
                     continue
                 mu = float(np.sum(w[m] * fj[m]) / pk)
-                var = float(np.sum(w[m] * fj[m] ** 2) / pk - mu ** 2 + r2)
+                var = float(np.sum(w[m] * fj[m] ** 2) / pk - mu**2 + r2)
                 sd = np.sqrt(max(var, 1e-300))
                 ys.append(mu + sd * xg)
                 qw.append((pk, mu, sd))
-            y = np.concatenate(ys)                                  # (nc_eff * n_y,)
+            y = np.concatenate(ys)  # (nc_eff * n_y,)
             d = y[:, None] - fj[None, :]
-            lk = -0.5 * d ** 2 / r2
+            lk = -0.5 * d**2 / r2
             mxk = lk.max(axis=1, keepdims=True)
             A = np.exp(lk - mxk) * w[None, :]
             rs = A.sum(axis=1)
@@ -341,17 +374,17 @@ def expected_posterior_variance(quad, problem, cands, n_y=64, targets=None, n_cl
             # Gauss-Hermite weight times that cluster's probability.
             W_y = np.concatenate([wg * pk for (pk, _mu, _sd) in qw])
             logq_y = np.full(y.size, -np.inf)
-            for (pk2, mu2, sd2) in qw:
-                logq_y = np.logaddexp(logq_y,
-                                      -0.5 * ((y - mu2) / sd2) ** 2 - np.log(sd2)
-                                      - 0.5 * np.log(2 * np.pi) + np.log(pk2))
+            for pk2, mu2, sd2 in qw:
+                logq_y = np.logaddexp(
+                    logq_y, -0.5 * ((y - mu2) / sd2) ** 2 - np.log(sd2) - 0.5 * np.log(2 * np.pi) + np.log(pk2)
+                )
             ratio = np.exp(logp_y - logq_y)
             den = float(np.sum(W_y * ratio))
             if abs(den - 1.0) <= mass_tol or nc >= max_clusters:
                 break
             nc = min(max_clusters, nc * 2)
         m_t = (A @ G) / rs[:, None]
-        v_t = (A @ G2) / rs[:, None] - m_t ** 2
+        v_t = (A @ G2) / rs[:, None] - m_t**2
         # A materially negative variance is a numerical failure, not something to clip away. Record
         # the worst one per candidate; clipping alone would hide it.
         neg_var[j] = float(-min(0.0, v_t.min()))
@@ -361,11 +394,15 @@ def expected_posterior_variance(quad, problem, cands, n_y=64, targets=None, n_cl
         EV[j] = num / den
         mass[j] = den
         used[j] = nc_eff
-    info = {"mass_dev_min": float(mass.min() - 1.0), "mass_dev_max": float(mass.max() - 1.0),
-            "mass_dev_absmax": float(np.abs(mass - 1.0).max()),
-            "unresolved": [int(c) for c, m in zip(np.asarray(cands, int), mass)
-                           if abs(m - 1.0) > mass_tol],
-            "clusters_used_max": int(used.max()), "clusters_used_median": float(np.median(used)),
-            "negative_variance_max": float(neg_var.max()),
-            "ev_raw": ev_raw.tolist(), "mass": mass.tolist()}
+    info = {
+        "mass_dev_min": float(mass.min() - 1.0),
+        "mass_dev_max": float(mass.max() - 1.0),
+        "mass_dev_absmax": float(np.abs(mass - 1.0).max()),
+        "unresolved": [int(c) for c, m in zip(np.asarray(cands, int), mass) if abs(m - 1.0) > mass_tol],
+        "clusters_used_max": int(used.max()),
+        "clusters_used_median": float(np.median(used)),
+        "negative_variance_max": float(neg_var.max()),
+        "ev_raw": ev_raw.tolist(),
+        "mass": mass.tolist(),
+    }
     return V_now, EV, V_now - EV, mass, info

@@ -65,7 +65,7 @@ class FlaxModel(nnx.Module):
         for path, meta in self.weight_mapping.items():
             slice = meta["slice"]
             shape = meta["shape"]
-            w = z[slice[0]: slice[1]].reshape(shape)
+            w = z[slice[0] : slice[1]].reshape(shape)
             flat.append((path, nnx.Param(w)))
         return nnx.from_flat_state(flat)
 
@@ -75,14 +75,12 @@ class FlaxModel(nnx.Module):
         flat = dict(nnx.to_flat_state(state))
         for path, meta in self.weight_mapping.items():
             w = flat[path].get_value().flatten()[:, None]
-            weights = weights.at[meta["slice"][0]: meta["slice"][1]].set(w)
+            weights = weights.at[meta["slice"][0] : meta["slice"][1]].set(w)
         return weights
 
     def _validate_parameters(self, z):
         """Ensure that ``z`` contains one value for every model parameter."""
-        assert z.shape[0] == (self.weight_size), (
-            "Parameter vector z has incorrect size."
-        )
+        assert z.shape[0] == (self.weight_size), "Parameter vector z has incorrect size."
 
     def loss(self, x, y, rngs: nnx.Rngs):
         """Compute the task-specific training loss."""
@@ -93,12 +91,12 @@ class DenseNN(FlaxModel):
     """Fully connected network with configurable hidden activations."""
 
     def __init__(
-            self,
-            input_dim,
-            hidden_dims,
-            output_dim,
-            rngs: nnx.Rngs,
-            activation="gelu",
+        self,
+        input_dim,
+        hidden_dims,
+        output_dim,
+        rngs: nnx.Rngs,
+        activation="gelu",
     ):
         """Create a dense network with the requested hidden activations.
 
@@ -108,9 +106,17 @@ class DenseNN(FlaxModel):
         nodes = [input_dim] + hidden_dims + [output_dim]
         self.activations = self._resolve_activations(activation, len(hidden_dims))
         self.layers = nnx.List()
-        for i in range(len(nodes)-1):
-            self.layers.append(nnx.Linear(nodes[i], nodes[i + 1], rngs=rngs, kernel_init=nnx_initializers.variance_scaling(
-                scale=2.0, mode="fan_in", distribution="truncated_normal")))
+        for i in range(len(nodes) - 1):
+            self.layers.append(
+                nnx.Linear(
+                    nodes[i],
+                    nodes[i + 1],
+                    rngs=rngs,
+                    kernel_init=nnx_initializers.variance_scaling(
+                        scale=2.0, mode="fan_in", distribution="truncated_normal"
+                    ),
+                )
+            )
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
         self.output_dim = output_dim
@@ -131,14 +137,10 @@ class DenseNN(FlaxModel):
             "linear": lambda value: value,
         }
         requested = (
-            [activation] * hidden_count
-            if isinstance(activation, str) or callable(activation)
-            else list(activation)
+            [activation] * hidden_count if isinstance(activation, str) or callable(activation) else list(activation)
         )
         if len(requested) != hidden_count:
-            raise ValueError(
-                "activation must be a single function/name or one per hidden layer."
-            )
+            raise ValueError("activation must be a single function/name or one per hidden layer.")
         resolved = []
         for function in requested:
             if isinstance(function, str):
@@ -146,8 +148,7 @@ class DenseNN(FlaxModel):
                     function = available[function.lower()]
                 except KeyError as error:
                     raise ValueError(
-                        f"Unsupported activation '{function}'. "
-                        f"Choose from: {', '.join(sorted(available))}."
+                        f"Unsupported activation '{function}'. Choose from: {', '.join(sorted(available))}."
                     ) from error
             if not callable(function):
                 raise TypeError("Each activation must be a callable or supported name.")
@@ -239,8 +240,7 @@ class CNN(FlaxModel):
         self.dropout1 = nnx.Dropout(rate=0.025)
         self.conv2 = nnx.Conv(2, 2, kernel_size=(3, 3), rngs=rngs)
         # self.batch_norm2 = nnx.BatchNorm(16, rngs=rngs)
-        self.avg_pool = partial(
-            nnx.avg_pool, window_shape=(2, 2), strides=(2, 2))
+        self.avg_pool = partial(nnx.avg_pool, window_shape=(2, 2), strides=(2, 2))
         self.output = nnx.Linear(7 * 7 * 2, 10, rngs=rngs)
         # self.dropout2 = nnx.Dropout(rate=0.025)
         # self.linear2 = nnx.Linear(128, 10, rngs=rngs)
@@ -253,8 +253,7 @@ class CNN(FlaxModel):
             flattened_shape = 1
         else:
             flattened_shape = x.shape[0]
-        conv1 = self.avg_pool(
-            nnx.relu(self.dropout1(self.conv1(x), rngs=rngs)))
+        conv1 = self.avg_pool(nnx.relu(self.dropout1(self.conv1(x), rngs=rngs)))
         conv2 = self.avg_pool(nnx.relu(self.conv2(conv1)))
         conv2_flatten = conv2.reshape(flattened_shape, 1, 1, -1)  # flatten
         output = self.output(conv2_flatten)
@@ -318,16 +317,12 @@ class NeuralNetworkBase(Model):
             for i in range(model.output_dim)
         ]
         grad = [g_fn(model, x) for g_fn in grad_fn]
-        grad_weights = [
-            nnx.vmap(lambda gr: model.state_to_weights(gr).T)(g) for g in grad
-        ]
+        grad_weights = [nnx.vmap(lambda gr: model.state_to_weights(gr).T)(g) for g in grad]
 
         jac_value = jnp.concatenate(grad_weights, axis=1)
         return jac_value
 
-    def train(
-            self, x_train, y_train, rngs: nnx.Rngs, epochs=200, learning_rate=0.1, **kwargs
-    ):
+    def train(self, x_train, y_train, rngs: nnx.Rngs, epochs=200, learning_rate=0.1, **kwargs):
         """
         Train the neural network model using mean squared error loss.
 
@@ -343,9 +338,7 @@ class NeuralNetworkBase(Model):
         model = self.flax_model
         loss_fn = self.build_loss_fn(x_train, y_train)
 
-        optimizer = nnx.optimizer.Optimizer(
-            model, tx=optax.adamw(learning_rate=learning_rate), wrt=nnx.Param
-        )
+        optimizer = nnx.optimizer.Optimizer(model, tx=optax.adamw(learning_rate=learning_rate), wrt=nnx.Param)
         pbar = tqdm(range(epochs), desc="Training Neural Network Model")
         for epoch in pbar:
             grad_fn = nnx.value_and_grad(loss_fn)
@@ -363,12 +356,11 @@ class NeuralNetworkClassifier(NeuralNetworkBase):
 
     def build_loss_fn(self, x_train, y_train):
         """Build a mean softmax cross-entropy loss for one training batch."""
+
         def loss_fn(model, rngs: nnx.Rngs):
             """Compute cross-entropy for the current model parameters."""
             logits = model(x_train, rngs)
-            loss = optax.softmax_cross_entropy(
-                logits=logits.squeeze(), labels=y_train.squeeze()
-            ).mean()
+            loss = optax.softmax_cross_entropy(logits=logits.squeeze(), labels=y_train.squeeze()).mean()
             return loss
 
         return loss_fn
@@ -379,6 +371,7 @@ class NeuralNetworkRegressor(NeuralNetworkBase):
 
     def build_loss_fn(self, x_train, y_train):
         """Build a mean squared error loss for one training batch."""
+
         def loss_fn(model, rngs: nnx.Rngs):
             """Compute regression error for the current model parameters."""
             predictions = model(x_train, rngs).squeeze()
