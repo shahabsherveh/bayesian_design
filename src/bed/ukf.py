@@ -8,15 +8,29 @@ import jax.numpy as jnp
 from flax.nnx import Rngs
 from scipy.stats import multivariate_normal
 
+from bed.base import FilterSnapshotMixin
 from bed.models import DenseNN, Model, NeuralNetworkRegressor
 
 
-class UKF:
+class UKF(FilterSnapshotMixin):
     """Unscented Kalman Filter with the same interface as :class:`EKF`.
 
     The state transition is the identity, matching the random-walk model used
     by the sequential experiment runner.
     """
+
+    # UKF carries the unscented-transform parameters and the process noise in
+    # addition to the belief. Order matters: ``state_prior`` is a property whose
+    # setter regenerates sigma points and reads ``alpha``/``kappa``, so the scalar
+    # parameters must be copied onto the snapshot first.
+    _snapshot_copied_attrs = (
+        "alpha",
+        "beta",
+        "kappa",
+        "state_innovation",
+        "measurement_error",
+        "state_prior",
+    )
 
     def __init__(
         self,

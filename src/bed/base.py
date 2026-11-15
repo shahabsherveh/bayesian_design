@@ -5,6 +5,7 @@ This module provides abstract base classes that define the interface for
 experimental design problems and optimization strategies.
 """
 
+import copy as _copy
 
 
 class Experiment:
@@ -110,3 +111,37 @@ class BayesianExperimentalDesign:
             NotImplementedError: This method should be implemented by subclasses
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
+
+
+class FilterSnapshotMixin:
+    """Belief-only copies of a state-estimation filter for ``trace`` recording.
+
+    A sequential run records the filter's belief before each epoch. Deep-copying
+    the whole filter would clone the measurement ``model`` every epoch even though
+    the model is set once and never mutated during a run — for a moderately sized
+    network that is tens of megabytes per epoch. :meth:`snapshot` instead returns a
+    new filter that *shares* ``model`` and copies only the mutable belief
+    attributes listed in ``_snapshot_copied_attrs``.
+
+    Subclasses set ``_snapshot_copied_attrs`` to the attributes that must be
+    independent of the live filter (e.g. ``("state_prior", "measurement_error")``).
+    Attributes are copied in the declared order, so list cheap immutable scalars
+    before any property whose setter depends on them.
+    The snapshot is an ordinary instance of the subclass, so it supports the same
+    methods (``get_state_posterior``, ``measurement_prior``, ...) and can itself be
+    copied by callers.
+    """
+
+    # Attributes copied into a snapshot. ``model`` is deliberately excluded: it is
+    # shared because it is immutable for the duration of a run.
+    _snapshot_copied_attrs: tuple[str, ...] = ("state_prior", "measurement_error")
+
+    def snapshot(self):
+        """Return a cheap copy sharing ``model`` and copying the recorded belief."""
+        clone = type(self).__new__(type(self))
+        clone.model = self.model
+        for name in self._snapshot_copied_attrs:
+            # Deep-copy only the declared belief attributes (arrays / tuples of
+            # arrays), never the model graph.
+            setattr(clone, name, _copy.deepcopy(getattr(self, name)))
+        return clone

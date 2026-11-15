@@ -200,3 +200,53 @@ def test_explicit_rng_makes_a_run_reproducible():
                        rng=np.random.default_rng(99)).selected_indices
 
     assert run_once() == run_once()
+
+
+@pytest.mark.parametrize("filter_cls", [EKF, __import__("bed.ukf", fromlist=["UKF"]).UKF])
+def test_snapshot_shares_the_model_and_copies_the_belief(filter_cls):
+    exp = _make_experiment()
+    model = exp.model
+    filt = filter_cls(model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+    snap = filt.snapshot()
+    # The model is immutable during a run, so it is shared, not cloned.
+    assert snap.model is filt.model
+    # The belief is copied so the snapshot does not alias the live filter.
+    assert snap.state_prior[0] is not filt.state_prior[0]
+    assert snap.state_prior[1] is not filt.state_prior[1]
+
+
+@pytest.mark.parametrize("filter_cls", [EKF, __import__("bed.ukf", fromlist=["UKF"]).UKF])
+def test_snapshot_is_independent_of_the_live_filter(filter_cls):
+    exp = _make_experiment()
+    filt = filter_cls(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+    snap = filt.snapshot()
+    before = np.asarray(snap.state_prior[0], dtype=float).copy()
+    filt.state_prior = (filt.state_prior[0] + 100.0, filt.state_prior[1])
+    np.testing.assert_allclose(np.asarray(snap.state_prior[0], dtype=float), before)
+
+
+@pytest.mark.parametrize("filter_cls", [EKF, __import__("bed.ukf", fromlist=["UKF"]).UKF])
+def test_snapshot_is_a_usable_filter(filter_cls):
+    exp = _make_experiment()
+    filt = filter_cls(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+    snap = filt.snapshot()
+    design = jnp.zeros((1, 1, 1, INPUT_DIM))
+    mean_meas, cov_meas = snap.measurement_prior(design)
+    assert jnp.all(jnp.isfinite(mean_meas)) and jnp.all(jnp.isfinite(cov_meas))
+    measurement = jnp.zeros((1, 1, 1))  # one scalar observation
+    mean_post, cov_post = snap.get_state_posterior(measurement, design)
+    assert mean_post is not None and cov_post is not None
+    from copy import deepcopy as _dc
+    assert _dc(snap) is not snap
+
+
+def test_trace_records_snapshots_that_do_not_copy_the_model():
+    exp = _make_experiment()
+    result = exp.run_experiment(
+        criteria=["EPIG"], filter_types=["ekf"], filter_params=[{}],
+        iterations=3, optimizer_method="brute_force", trace=True) \
+        .experiment_results_dict["ekf"]["EPIG"]
+    assert len(result.filters) == 3
+    # Every traced filter shares one model object rather than cloning it per epoch.
+    models = {id(f.model) for f in result.filters}
+    assert len(models) == 1
