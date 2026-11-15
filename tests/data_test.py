@@ -74,7 +74,10 @@ def test_create_synthetic_data_shapes():
 
 
 def test_mnist_data():
-    pytest.importorskip("tensorflow_datasets")
+    try:
+        import tensorflow_datasets  # noqa: F401
+    except ImportError:
+        pytest.skip("tensorflow_datasets not installed")
     data = get_mnist_data(num_train=10, num_test=5)
     assert data.x_train.shape[0] == 10
     assert data.y_train.shape == (10, 10)
