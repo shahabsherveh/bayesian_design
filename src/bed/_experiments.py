@@ -264,14 +264,15 @@ class Experiment:
         )
         return jnp.where(~jnp.isnan(mi), mi, -jnp.inf)
 
-    def _sample_latent(self, filtr, size):
-        """Draw parameter samples from the filter's Gaussian belief with the runner's generator."""
+    def _sample_latent(self, filtr, size, rng=None):
+        """Draw parameter samples from the filter's Gaussian belief with the run's generator."""
+        local_rng = rng if rng is not None else self._rng
         state_mean, state_cov = filtr.state_prior
         return jnp.asarray(multivariate_normal(
             mean=np.asarray(state_mean).flatten(), cov=np.asarray(state_cov)
-        ).rvs(size=size, random_state=self._rng)).reshape(size, -1)
+        ).rvs(size=size, random_state=local_rng)).reshape(size, -1)
 
-    def calculate_epig_mc(self, x, filtr, x_1=None, num_latent_samples=1000, **kwargs):
+    def calculate_epig_mc(self, x, filtr, x_1=None, num_latent_samples=1000, rng=None, **kwargs):
         """Nested Monte Carlo estimate of EPIG (Bickford Smith et al., 2023) for any output
         dimension with a diagonal observation covariance: one outer sample (theta_j, y_j, y'_j)
         per pool point, ``num_latent_samples`` inner samples for the marginal and joint densities,
@@ -281,6 +282,7 @@ class Experiment:
             x = x[None, ...]
         if x_1 is None:
             x_1 = self.design_pool
+        local_rng = rng if rng is not None else self._rng
 
         M, B, K = x_1.shape[0], x.shape[0], num_latent_samples
         R = jnp.atleast_2d(jnp.asarray(self.measurement_error))
@@ -291,8 +293,8 @@ class Experiment:
         r = jnp.diagonal(R)
         d_y = r.size
         # one outer sample (theta_j, y_j, y'_j) per pool point, K inner samples for the densities
-        theta_outer = self._sample_latent(filtr, M)
-        theta_inner = self._sample_latent(filtr, K)
+        theta_outer = self._sample_latent(filtr, M, rng=local_rng)
+        theta_inner = self._sample_latent(filtr, K, rng=local_rng)
         f_out_x = jax.vmap(lambda th: self.model(th, x))(
             theta_outer).reshape(M, B, d_y)
         f_out_x1 = jax.vmap(lambda th: self.model(th, x_1))(
@@ -301,9 +303,9 @@ class Experiment:
         f_out_x1 = f_out_x1[jnp.arange(M), jnp.arange(M)]
         y_0 = f_out_x + jnp.sqrt(r) * \
             jnp.asarray(
-            self._rng.normal(size=(M, B, d_y)))
+            local_rng.normal(size=(M, B, d_y)))
         y_1 = f_out_x1 + jnp.sqrt(r) * \
-            jnp.asarray(self._rng.normal(size=(M, d_y)))
+            jnp.asarray(local_rng.normal(size=(M, d_y)))
         f_in_x = jax.vmap(lambda th: self.model(th, x))(
             theta_inner).reshape(K, B, d_y)
         f_in_x1 = jax.vmap(lambda th: self.model(th, x_1))(
@@ -356,7 +358,7 @@ class Experiment:
         )(key)
         return val
 
-    def optimize(self, criterion_func, method, filtr, params=None, exclude=None):
+    def optimize(self, criterion_func, method, filtr, params=None, exclude=None, rng=None):
         """
         Select the design that maximizes an information criterion.
 
@@ -366,7 +368,7 @@ class Experiment:
 
         Args:
             criterion_func: Criterion to maximise, with signature
-                ``func(x, filtr=..., key=...)`` returning values over ``x``.
+                ``func(x, filtr=..., key=..., rng=...)`` returning values over ``x``.
             method: One of ``"brute_force"``, ``"gradient_ascent"``, or
                 ``"grid_search"``.
             filtr: Filter whose belief defines the criterion.
@@ -376,6 +378,8 @@ class Experiment:
                 methods: ``brute_force``/``grid_search`` mask them before the
                 argmax, ``gradient_ascent`` snaps to the nearest non-excluded
                 pool point.
+            rng: NumPy generator for criterion keys and randomness. Defaults to
+                ``self._rng``.
 
         Returns:
             Tuple ``(best_index, x, crit_value)`` where:
@@ -385,13 +389,11 @@ class Experiment:
         """
         if params is None:
             params = {"lr": 1, "max_iters": 50}
-        seeds = self._rng.integers(
-            0, 10000, size=(self.design_space.shape[0],)
-        )  # Random keys for randomness in criterion
-        keys = jax.vmap(jax.random.key)(seeds)
+        local_rng = rng if rng is not None else self._rng
+        keys = self._criterion_keys(self.design_space.shape[0], rng=local_rng)
         if method == "brute_force":
             pool_values = jnp.asarray(criterion_func(
-                x=self.design_space, filtr=filtr, key=keys)).reshape(-1)
+                x=self.design_space, filtr=filtr, key=keys, rng=local_rng)).reshape(-1)
             if exclude:
                 # Pool-based selection is without replacement: a design whose
                 # label is already in the filter cannot be selected again.
@@ -410,12 +412,12 @@ class Experiment:
             x = self.design_space[best_index]
             crit_value = pool_values_shuffled[best_position]
         elif method == "gradient_ascent":
-            x = np.random.normal(
+            x = local_rng.normal(
                 size=self.design_space[:1].shape,
                 scale=0.01,
             )
             grad_func = jax.value_and_grad(
-                lambda x: criterion_func(x, filtr=filtr, key=keys)[0])
+                lambda x: criterion_func(x, filtr=filtr, key=keys, rng=local_rng)[0])
             max_iters = params.get("max_iters")
             lr = params.get("lr")
             pbar = tqdm(range(max_iters), desc="Optimizing design", leave=True)
@@ -434,13 +436,13 @@ class Experiment:
             best_index = self._nearest_pool_index(x.squeeze(0), exclude)
             x = self.design_space[best_index]
             crit_value = jnp.asarray(criterion_func(
-                x=x[None, ...], filtr=filtr, key=keys[:1])).reshape(-1)[0]
+                x=x[None, ...], filtr=filtr, key=keys[:1], rng=local_rng)).reshape(-1)[0]
         elif method == "grid_search":
             num_samples = params.get("num_samples", 200)
             # Sample candidate designs from the pool with replacement, so the
             # result is a real (observable) design and has a pool index.
             best_index, crit_value = self._pool_sample_search(
-                criterion_func, filtr, num_samples, exclude)
+                criterion_func, filtr, num_samples, exclude, rng=local_rng)
             x = self.design_space[best_index]
 
         return best_index, x, crit_value
@@ -454,7 +456,7 @@ class Experiment:
             dist = dist.at[jnp.asarray(sorted(exclude))].set(jnp.inf)
         return jnp.argmin(dist)
 
-    def _pool_sample_search(self, criterion_func, filtr, num_samples, exclude=None):
+    def _pool_sample_search(self, criterion_func, filtr, num_samples, exclude=None, rng=None):
         """Evaluate a criterion on ``num_samples`` pool points drawn with replacement.
 
         Returns the winning pool index and its criterion value. Excluded indices
@@ -462,15 +464,17 @@ class Experiment:
         to evaluating the full non-excluded pool. Raises only when the whole pool
         is excluded.
         """
+        local_rng = rng if rng is not None else self._rng
         n = self.design_space.shape[0]
         if exclude and len(exclude) >= n:
             raise ValueError("Every design in the pool has been observed.")
         idx = jax.random.randint(
             jax.random.key(0), (num_samples,), 0, n)
         # The criterion consumes one key per candidate design.
-        sample_keys = self._criterion_keys(num_samples)
+        sample_keys = self._criterion_keys(num_samples, rng=local_rng)
         values = jnp.asarray(criterion_func(
-            x=self.design_space[idx], filtr=filtr, key=sample_keys)).reshape(-1)
+            x=self.design_space[idx], filtr=filtr, key=sample_keys,
+            rng=local_rng)).reshape(-1)
         if exclude:
             allowed = ~jnp.isin(idx, jnp.asarray(sorted(exclude)))
             if not bool(jnp.any(allowed)):
@@ -480,16 +484,18 @@ class Experiment:
                 pool_values = jnp.asarray(criterion_func(
                     x=self.design_space[allowed_idx],
                     filtr=filtr,
-                    key=self._criterion_keys(len(keep)),
+                    key=self._criterion_keys(len(keep), rng=local_rng),
+                    rng=local_rng,
                 )).reshape(-1)
                 return allowed_idx[jnp.argmax(pool_values)], pool_values.max()
             values = values.at[~allowed].set(-jnp.inf)
         best_pos = jnp.argmax(values)
         return idx[best_pos], values[best_pos]
 
-    def _criterion_keys(self, count):
-        """Return ``count`` per-candidate random keys from the runner's generator."""
-        seeds = self._rng.integers(0, 10000, size=(count,))
+    def _criterion_keys(self, count, rng=None):
+        """Return ``count`` per-candidate random keys from ``rng`` (default ``self._rng``)."""
+        local_rng = rng if rng is not None else self._rng
+        seeds = local_rng.integers(0, 10000, size=(count,))
         return jax.vmap(jax.random.key)(seeds)
 
     def run(
@@ -548,8 +554,11 @@ class Experiment:
         criterion_func = criterion_dict[criterion_label]
         if optimizer_params is None:
             optimizer_params = {"lr": 1, "max_iters": 50}
-        self._rng = rng if rng is not None else np.random.default_rng(
-            self.seed)
+        # Use a per-call generator instead of rebinding self._rng: an explicit rng
+        # keeps runs reproducible and leaves the instance's default stream intact;
+        # a bare call consumes (advances) the default stream rather than replaying
+        # it from the seed.
+        local_rng = rng if rng is not None else self._rng
         used_indices = set() if exclude is None else {int(i) for i in exclude}
         selected_indices = []
         selected_designs = []
@@ -589,6 +598,7 @@ class Experiment:
                 method=optimizer,
                 params=optimizer_params,
                 exclude=used_indices,
+                rng=local_rng,
             )
             measurement = self.data.observe(best_index)
             used_indices.add(int(best_index))
