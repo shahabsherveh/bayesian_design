@@ -1,4 +1,5 @@
 from copy import deepcopy
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -49,12 +50,12 @@ class Experiment:
         latent_cov=None,
         latent_innovation=0,
         measurement_error=None,
-        data: Data = None,
-        model: NeuralNetworkRegressor = None,
+        data: Data | None = None,
+        model: NeuralNetworkRegressor | None = None,
         latent_var=None,
         warm_start: int = 10,
         pre_train_model=False,
-        training_kwargs=None,
+        training_kwargs: dict[str, Any] | None = None,
         plot_inter_results=False,
         seed: int = 0,
         init: str = "filter",
@@ -86,6 +87,10 @@ class Experiment:
             latent_mean: Prior mean for latent parameters. Required for models
                 without a ``flax_model``; otherwise inferred from the model weights.
         """
+        if data is None:
+            raise TypeError("data must be provided.")
+        if model is None:
+            raise TypeError("model must be provided.")
         if latent_cov is None:
             if latent_var is None:
                 raise TypeError(
@@ -418,7 +423,7 @@ class Experiment:
             )
             grad_func = jax.value_and_grad(
                 lambda x: criterion_func(x, filtr=filtr, key=keys, rng=local_rng)[0])
-            max_iters = params.get("max_iters")
+            max_iters = int(params.get("max_iters", 50))
             lr = params.get("lr")
             pbar = tqdm(range(max_iters), desc="Optimizing design", leave=True)
             for i in pbar:
