@@ -250,7 +250,7 @@ class LinearGaussianModel:
             problem: Solved CVXPy problem containing optimal eta values
         """
         import matplotlib.pyplot as plt
-        eta = problem.var_dict["eta"].value.round(2)
+        eta = np.asarray(problem.var_dict["eta"].value, dtype=float).round(2)
         plt.scatter(
             self.observable_designs[:, 0],
             self.observable_designs[:, 1],
@@ -260,7 +260,7 @@ class LinearGaussianModel:
         plt.colorbar(label="allocation")
         plt.show()
 
-    def A_opt_criterion(self, eta: list[int], R: np.ndarray) -> float:
+    def A_opt_criterion(self, eta: np.ndarray, R: np.ndarray) -> float:
         """
         Evaluate A-optimality criterion for a given design.
 
@@ -339,7 +339,7 @@ class LinearModel(Model):
     Commonly used for linear regression problems and as a test case.
     """
 
-    def __call__(self, z, x):
+    def __call__(self, z, x, **kwargs):
         """
         Compute linear measurement: y = z^T @ x.
 

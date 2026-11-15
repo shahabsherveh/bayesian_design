@@ -256,7 +256,7 @@ class GP:
             Allocations are rounded to 2 decimal places for display.
         """
         import matplotlib.pyplot as plt
-        eta = problem.var_dict["eta"].value.round(2)
+        eta = np.asarray(problem.var_dict["eta"].value, dtype=float).round(2)
         plt.scatter(
             self.observable_designs[:, 0],
             self.observable_designs[:, 1],

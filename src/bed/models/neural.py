@@ -6,13 +6,25 @@ from functools import partial
 import jax.numpy as jnp
 import optax
 from flax import nnx
+from flax.nnx.nn import initializers as nnx_initializers
 from tqdm import tqdm
 
 from ._base import Model
 
 
 class FlaxModel(nnx.Module):
-    """Base class for NNX models with flattened latent parameters."""
+    """Base class for NNX models with flattened latent parameters.
+
+    Subclasses create their layers in ``__init__`` and then call
+    ``self.weight_mapping, self.weight_size = self._create_weight_mapping()``.
+    The flattened latent state and everything derived from it assume those two
+    attributes (plus ``output_dim``) exist, so they are declared here.
+    """
+
+    # Populated by the subclass in ``__init__``; see ``_create_weight_mapping``.
+    weight_mapping: dict
+    weight_size: int
+    output_dim: int
 
     def __call__(self, x, rngs: nnx.Rngs | None = None):
         """Evaluate the network at a batch of designs."""
@@ -97,7 +109,7 @@ class DenseNN(FlaxModel):
         self.activations = self._resolve_activations(activation, len(hidden_dims))
         self.layers = nnx.List()
         for i in range(len(nodes)-1):
-            self.layers.append(nnx.Linear(nodes[i], nodes[i + 1], rngs=rngs, kernel_init=nnx.nn.initializers.variance_scaling(
+            self.layers.append(nnx.Linear(nodes[i], nodes[i + 1], rngs=rngs, kernel_init=nnx_initializers.variance_scaling(
                 scale=2.0, mode="fan_in", distribution="truncated_normal")))
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
