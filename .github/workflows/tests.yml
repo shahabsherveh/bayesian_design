@@ -10,6 +10,9 @@ jobs:
   # Fast gates. These also run locally before every commit via .pre-commit-config.yaml,
   # so this job is a backstop for commits made with --no-verify and for pull requests
   # from contributors who have not installed the hook.
+  #
+  # It checks formatting/style and prose only. Type checking lives in the `test` job
+  # because ty must resolve numpy/jax/flax to be meaningful.
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -37,12 +40,11 @@ jobs:
         # --config is required: pymarkdown does not otherwise pick up the project file.
         run: pymarkdown --config .pymarkdown.json scan $(git ls-files '*.md')
 
-      - name: ty
-        # src/ only: tests/ and experiments/ import sibling scripts via sys.path and
-        # carry Optional-narrowing patterns ty cannot follow. src/ itself has zero
-        # diagnostics, and pyproject.toml sets terminal.error-on-warning, so any new
-        # diagnostic of any severity fails this step.
-        run: ty check src/
+      # NOTE: ty deliberately does not run in this job. Type checking src/ needs the
+      # project's dependencies importable (numpy, jax, flax, scipy, ...); without them
+      # ty reports every import as unresolved and the check is meaningless. Installing
+      # that stack here would turn a seconds-long job into a multi-minute download, so
+      # ty runs in the `test` job below, which installs the environment anyway.
 
   test:
     runs-on: ubuntu-latest
@@ -92,6 +94,15 @@ jobs:
       - name: Show the resolved environment
         if: steps.changes.outputs.code == 'true'
         run: python -m pip list
+
+      - name: ty
+        if: steps.changes.outputs.code == 'true'
+        # src/ only: tests/ and experiments/ import sibling scripts via sys.path and
+        # carry Optional-narrowing patterns ty cannot follow. src/ has zero diagnostics
+        # and pyproject.toml sets terminal.error-on-warning, so any new diagnostic of any
+        # severity fails this step. It runs here rather than in the lint job because ty
+        # needs the dependencies importable (see the note in that job).
+        run: ty check src/
 
       - name: Run the test suite
         if: steps.changes.outputs.code == 'true'
