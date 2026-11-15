@@ -27,6 +27,7 @@ between policies at a fixed grid converge as the grid is refined, and :func:`con
 reports policy values across both the outcome-grid and the parameter-grid resolution.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import product
 
@@ -37,8 +38,8 @@ import numpy as np
 class GridModel:
     grid: np.ndarray          # (G, p) parameter grid points
     prior: np.ndarray         # (G,) prior weights, sum 1
-    f: callable               # f(grid (G, p), x) -> (G,) mean observation at design x
-    g: callable               # g(grid) -> (G,) target functional
+    f: Callable               # f(grid (G, p), x) -> (G,) mean observation at design x
+    g: Callable               # g(grid) -> (G,) target functional
     designs: np.ndarray       # (n, ...) candidate designs
     sigma: float              # observation noise sd
     ny: int = 121             # outcome-grid points per observation

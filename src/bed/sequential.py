@@ -13,6 +13,7 @@ posterior of :mod:`bed.reference`.
 Nothing in a policy sees the truth, the future, or the reference posterior.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import jax
@@ -39,7 +40,7 @@ class DesignProblem:
     Rt: object                # target-side noise: 0.0 (noise-free functional) or (d_t, d_t)
     z_true: np.ndarray        # (d,)
     replace: bool             # repeated acquisitions allowed
-    target_fn: callable       # samples (N, d) -> target values (N, q) used for the terminal loss
+    target_fn: Callable       # samples (N, d) -> target values (N, q) used for the terminal loss
     target_names: tuple
     truth_targets: np.ndarray = field(init=False)   # (q,)
     meta: dict = field(default_factory=dict)

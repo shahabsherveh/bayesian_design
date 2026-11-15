@@ -118,6 +118,21 @@ class ISResult:
     max_weight: float
     khat: float
     map_record: list
+    # Diagnostics attached after construction by ``robust_posterior`` and its escalation
+    # stages. They are optional metadata: a bare ``importance_posterior`` result carries
+    # none of them, so ``diagnostics()`` reads them defensively. Declaring them here makes
+    # the contract explicit and checkable rather than implicit.
+    method: str | None = None
+    rhat_max: float | None = None
+    ess_bulk_min: float | None = None
+    ess_tail_min: float | None = None
+    accept: float | None = None
+    mcmc_steps: int | None = None
+    mcmc_chains: int | None = None
+    reliable: bool | None = None
+    stages: list[dict] | None = None
+    thresholds: dict | None = None
+    dropped_mass: float | None = None
 
     def moments(self, fn):
         """Weighted mean and variance of ``fn(samples)`` (``fn`` maps ``(N, d)`` to ``(N, q)``)."""
