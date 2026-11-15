@@ -57,8 +57,8 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
   `self.model`) and must not be papered over with `noqa`/`type: ignore`.
 - **`main` is protected.** Direct commits are blocked by the `no-commit-to-branch` hook.
   Work on a short-lived branch (`feat/`, `fix/`, `refactor/`, `chore/`) and merge via PR.
-- **Don't commit raw run output.** `results/**/raw/` is gitignored; the `results/` tree is
-  absent from the checkout.
+- **Don't commit run output.** `results/` is gitignored (regenerable, manifests record the
+  commit that produced each file); the tree is absent from the checkout.
 - **TensorFlow paths are optional** and not exercised in the standard environment; treat
   them as lazy and guard/skip where possible.
 
