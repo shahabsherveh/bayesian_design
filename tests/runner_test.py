@@ -167,3 +167,36 @@ def test_grid_search_run_records_pool_indices_each_epoch():
         assert any(np.allclose(np.asarray(design), np.asarray(pool_point))
                    for pool_point in np.asarray(exp.design_space)), \
             "selected design is not a pool point"
+
+
+def test_run_uses_a_local_generator_and_does_not_rebind_the_instance_rng():
+    exp = _make_experiment()
+    filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+    before = exp._rng
+    exp.run("RANDOM", "ekf", {}, filt, epochs=3, optimizer="brute_force",
+            rng=np.random.default_rng(123))
+    # An explicit rng must not replace the instance's default generator.
+    assert exp._rng is before
+
+
+def test_repeated_bare_runs_advance_rather_than_replay():
+    exp = _make_experiment()
+
+    def first_indices():
+        f = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+        r = exp.run("RANDOM", "ekf", {}, f, epochs=4, optimizer="brute_force")
+        return r.selected_indices
+
+    first = first_indices()
+    second = first_indices()  # same Experiment, rng=None -> must advance
+    assert first != second, "bare run() calls replayed the same random stream"
+
+
+def test_explicit_rng_makes_a_run_reproducible():
+    def run_once():
+        exp = _make_experiment()
+        filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)
+        return exp.run("RANDOM", "ekf", {}, filt, epochs=4, optimizer="brute_force",
+                       rng=np.random.default_rng(99)).selected_indices
+
+    assert run_once() == run_once()
