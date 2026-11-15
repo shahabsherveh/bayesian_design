@@ -6,12 +6,15 @@ histories (steps, policies). The resampling unit is therefore the subject, never
 bootstrap replicate draws subjects with replacement and keeps every row of a drawn subject. With
 one row per subject this is the ordinary paired bootstrap.
 """
+
 import numpy as np
 
 
 def _groups(clusters):
-    clusters = np.asarray(clusters); _, inv = np.unique(clusters, return_inverse=True)
-    order = np.argsort(inv, kind="stable"); counts = np.bincount(inv)
+    clusters = np.asarray(clusters)
+    _, inv = np.unique(clusters, return_inverse=True)
+    order = np.argsort(inv, kind="stable")
+    counts = np.bincount(inv)
     starts = np.concatenate([[0], np.cumsum(counts)[:-1]])
     return order, starts, counts
 
@@ -21,11 +24,14 @@ def cluster_bootstrap(stat, arrays, clusters, n_boot=4000, seed=0, alpha=0.05):
     the row arrays ``arrays`` (all of length ``n``) with cluster labels ``clusters``; returns
     ``[point, lower, upper]`` with the point estimate on the full data and percentile limits."""
     arrays = [np.asarray(a) for a in arrays]
-    order, starts, counts = _groups(clusters); C = counts.size; rng = np.random.default_rng(seed)
-    point = float(stat(*arrays)); reps = np.empty(n_boot)
+    order, starts, counts = _groups(clusters)
+    C = counts.size
+    rng = np.random.default_rng(seed)
+    point = float(stat(*arrays))
+    reps = np.empty(n_boot)
     for b in range(n_boot):
         pick = rng.integers(0, C, C)
-        idx = np.concatenate([order[starts[c]:starts[c] + counts[c]] for c in pick])
+        idx = np.concatenate([order[starts[c] : starts[c] + counts[c]] for c in pick])
         reps[b] = stat(*[a[idx] for a in arrays])
     return [point, float(np.percentile(reps, 100 * alpha / 2)), float(np.percentile(reps, 100 * (1 - alpha / 2)))]
 

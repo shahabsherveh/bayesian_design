@@ -17,8 +17,7 @@ plt.rcParams.update({"font.size": 11})
 jax.config.update("jax_enable_x64", True)
 design_dim = 10
 latent_dim = design_dim + 1
-latent_true = 1 * \
-    jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
+latent_true = 1 * jax.random.normal(jax.random.PRNGKey(1234), (latent_dim, 1)) + 0
 latent_var = 0.1 * jnp.eye(latent_dim)
 latent_innovation = 0
 measurement_cov = 0.01 * jnp.eye(1)
@@ -61,7 +60,7 @@ ekf = UKF(
     state_prev=experiment.state_init_prior[0],
     state_cov_prev=experiment.state_init_prior[1],
     state_innovation=experiment.measurement_error,
-    measurement_error=experiment.measurement_error
+    measurement_error=experiment.measurement_error,
 )
 
 epig = experiment.calculate_epig(x_0, filtr=ekf)
@@ -70,16 +69,10 @@ try:
         epig_mc_inner = []
         pbar_inner = trange(30, desc="EPIG MC Repeats", leave=False)
         for _ in pbar_inner:
-            epig_mc = experiment.calculate_epig_mc(
-                x_0, filtr=ekf, num_latent_samples=i, num_design_samples=500
-            )
-            pbar_inner.set_description(
-                f"EPIG MC: {epig_mc.squeeze():.4f} EPIG: {epig.squeeze():.4f}"
-            )
+            epig_mc = experiment.calculate_epig_mc(x_0, filtr=ekf, num_latent_samples=i, num_design_samples=500)
+            pbar_inner.set_description(f"EPIG MC: {epig_mc.squeeze():.4f} EPIG: {epig.squeeze():.4f}")
             epig_mc_inner.append(epig_mc)
-        pbar.set_description(
-            f"EPIG MC: {jnp.mean(jnp.array(epig_mc_inner)):.4f} EPIG: {epig.squeeze():.4f}"
-        )
+        pbar.set_description(f"EPIG MC: {jnp.mean(jnp.array(epig_mc_inner)):.4f} EPIG: {epig.squeeze():.4f}")
         epig_mc_list.append(epig_mc_inner)
 except KeyboardInterrupt:
     pass

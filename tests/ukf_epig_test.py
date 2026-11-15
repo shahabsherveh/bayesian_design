@@ -1,4 +1,5 @@
 """Correctness tests for the sigma-point closed-form EPIG of the UKF."""
+
 import jax
 import jax.numpy as jnp
 from flax import nnx
@@ -50,12 +51,8 @@ def test_predictive_moments_match_for_linear_model():
     ekf_mean, ekf_cov = ekf.measurement_prior(x)
     ukf_mean, ukf_cov = ukf.measurement_prior(x)
 
-    assert jnp.allclose(
-        ukf_mean.reshape(ekf_mean.shape), ekf_mean, rtol=1e-10, atol=1e-12
-    )
-    assert jnp.allclose(
-        ukf_cov.reshape(ekf_cov.shape), ekf_cov, rtol=1e-10, atol=1e-12
-    )
+    assert jnp.allclose(ukf_mean.reshape(ekf_mean.shape), ekf_mean, rtol=1e-10, atol=1e-12)
+    assert jnp.allclose(ukf_cov.reshape(ekf_cov.shape), ekf_cov, rtol=1e-10, atol=1e-12)
 
 
 def test_posterior_state_matches_for_linear_model():
@@ -65,9 +62,7 @@ def test_posterior_state_matches_for_linear_model():
     ekf_mean, ekf_cov = ekf.get_state_posterior(measurement, x)
     ukf_mean, ukf_cov = ukf.get_state_posterior(measurement, x)
 
-    assert jnp.allclose(
-        ukf_mean.reshape(ekf_mean.shape), ekf_mean, rtol=1e-10, atol=1e-12
-    )
+    assert jnp.allclose(ukf_mean.reshape(ekf_mean.shape), ekf_mean, rtol=1e-10, atol=1e-12)
     assert jnp.allclose(ukf_cov, ekf_cov, rtol=1e-10, atol=1e-12)
 
 
@@ -94,11 +89,11 @@ def test_epig_matches_gaussian_mutual_information_of_sigma_point_joint():
 
     expected = []
     for b in range(x.shape[0]):
-        fx = fvals(x[b:b + 1])
+        fx = fvals(x[b : b + 1])
         mx = jnp.sum(wm * fx)
         mi = []
         for j in range(pool.shape[0]):
-            fj = fvals(pool[j:j + 1])
+            fj = fvals(pool[j : j + 1])
             mj = jnp.sum(wm * fj)
             sxx = jnp.sum(wc * (fx - mx) ** 2) + R
             sjj = jnp.sum(wc * (fj - mj) ** 2) + R
@@ -267,10 +262,7 @@ def test_epig_scalar_quadratic_state_matches_analytic_gaussian_moments():
 
     def analytic(x):
         s_x = x**2 * v + R
-        terms = [
-            0.5 * jnp.log(s_x * (xp**2 * v + R) / (s_x * (xp**2 * v + R) - (x * xp * v) ** 2))
-            for xp in pool
-        ]
+        terms = [0.5 * jnp.log(s_x * (xp**2 * v + R) / (s_x * (xp**2 * v + R) - (x * xp * v) ** 2)) for xp in pool]
         return jnp.mean(jnp.array(terms))
 
     want = jnp.array([analytic(x) for x in X])

@@ -1,4 +1,5 @@
 """The mode-centred quadrature against closed forms and against a deliberately hard posterior."""
+
 import numpy as np
 import pytest
 
@@ -21,18 +22,21 @@ class LinearModel:
 
     def __call__(self, z, X):
         import jax.numpy as jnp
-        z = jnp.asarray(z); X = jnp.asarray(X)
+
+        z = jnp.asarray(z)
+        X = jnp.asarray(X)
         return jnp.einsum("ij,j->i", jnp.asarray(self.A), z)[None, :] * jnp.ones((X.shape[0], 1))
 
     def jacobian(self, z, X):
         import jax.numpy as jnp
+
         return jnp.broadcast_to(jnp.asarray(self.A)[None], (jnp.asarray(X).shape[0],) + self.A.shape)
 
 
 def gauss_hermite_is_exact():
     x, w = gauss_hermite(20)
     for k, exact in ((0, 1.0), (2, 1.0), (4, 3.0), (6, 15.0)):
-        assert abs((w * x ** k).sum() - exact) < 1e-10
+        assert abs((w * x**k).sum() - exact) < 1e-10
 
 
 def test_gauss_hermite_exact():
@@ -44,9 +48,10 @@ def test_linear_gaussian_posterior_exact(d, k):
     """Against the Kalman closed form: mean, covariance and target moments to 1e-9."""
     rng = np.random.default_rng(11 + d * 17 + k)
     A = rng.normal(size=(1, d))
-    mu0 = rng.normal(size=d); S0 = np.eye(d) * 0.7 + 0.1
+    mu0 = rng.normal(size=d)
+    S0 = np.eye(d) * 0.7 + 0.1
     S0 = S0 @ S0.T
-    R = np.array([[0.35 ** 2]])
+    R = np.array([[0.35**2]])
     X = rng.normal(size=(k, d))
     ztrue = mu0 + np.linalg.cholesky(S0) @ rng.normal(size=d)
     Y = (A @ ztrue)[None, :].repeat(k, 0) + rng.normal(size=(k, 1)) * 0.35
@@ -67,8 +72,10 @@ def test_linear_gaussian_posterior_exact(d, k):
     # linear-Gaussian model the Laplace component IS the posterior, so with the proposal widened by
     # `inflate` the density ratio peaks at inflate**(d/2) relative to the uninflated rule.
     assert q.n_components == 1
-    assert abs(q.weight_concentration_ratio - 2.0 ** (d / 2)) < 0.25 * 2.0 ** (d / 2), \
-        (q.weight_concentration_ratio, 2.0 ** (d / 2))
+    assert abs(q.weight_concentration_ratio - 2.0 ** (d / 2)) < 0.25 * 2.0 ** (d / 2), (
+        q.weight_concentration_ratio,
+        2.0 ** (d / 2),
+    )
     # and with no inflation it is exactly the base rule
     q1 = ModeQuadrature(post, mu0, S0, n_per_axis=24, inflate=1.0)
     m1, v1 = q1.moments(lambda Z: Z)
@@ -81,14 +88,16 @@ def test_reports_concentration_rather_than_hiding_it():
     rng = np.random.default_rng(3)
     d = 2
     A = np.array([[1.0, 0.4]])
-    mu0 = np.zeros(d); S0 = np.eye(d) * 4.0
-    R = np.array([[0.02 ** 2]])                      # very sharp likelihood
+    mu0 = np.zeros(d)
+    S0 = np.eye(d) * 4.0
+    R = np.array([[0.02**2]])  # very sharp likelihood
     X = rng.normal(size=(30, d))
     Y = np.full((30, 1), 0.3) + rng.normal(size=(30, 1)) * 0.02
     post = ref.Posterior(LinearModel(A), X, Y, mu0, S0, R)
     q = ModeQuadrature(post, mu0, S0, n_per_axis=24)
     m, v = q.moments(lambda Z: Z)
-    H = np.repeat(A, 30, axis=0); Rb = np.eye(30) * R[0, 0]
+    H = np.repeat(A, 30, axis=0)
+    Rb = np.eye(30) * R[0, 0]
     Sn = np.linalg.inv(np.linalg.inv(S0) + H.T @ np.linalg.inv(Rb) @ H)
     mn = Sn @ (np.linalg.inv(S0) @ mu0 + H.T @ np.linalg.inv(Rb) @ Y.ravel())
     assert np.allclose(m, mn, atol=1e-8, rtol=1e-6)
@@ -116,25 +125,27 @@ def test_mixture_components_carry_their_weights():
 
         def jacobian(self, z, X):
             z = jnp.asarray(z)
-            return jnp.broadcast_to(jnp.array([[2.0 * z[0], 1.0]])[None],
-                                    (jnp.asarray(X).shape[0], 1, 2))
+            return jnp.broadcast_to(jnp.array([[2.0 * z[0], 1.0]])[None], (jnp.asarray(X).shape[0], 1, 2))
 
     # The second coordinate is given a tight prior so it cannot absorb the shift; the likelihood
     # then pins z0^2, leaving two well-separated modes near +-1 rather than one curved ridge. The
     # prior mean is offset so the two modes carry **unequal** mass: with equal mixture weights the
     # omitted factor is a constant and the bug is invisible, which is exactly what a symmetric
     # version of this fixture showed when the defect was reintroduced deliberately.
-    mu0 = np.array([0.75, 0.0]); S0 = np.diag([0.55, 0.01])
-    R = np.array([[0.15 ** 2]])
-    X = np.zeros((4, 1)); Y = np.full((4, 1), 1.0)
+    mu0 = np.array([0.75, 0.0])
+    S0 = np.diag([0.55, 0.01])
+    R = np.array([[0.15**2]])
+    X = np.zeros((4, 1))
+    Y = np.full((4, 1), 1.0)
     post = ref.Posterior(Quadratic(), X, Y, mu0, S0, R)
 
     ax = np.linspace(-8, 8, 1201)
     Z = np.stack([g.ravel() for g in np.meshgrid(ax, ax, indexing="ij")], axis=1)
-    lp = np.concatenate([post.logp(Z[s:s + 200000]).ravel() for s in range(0, Z.shape[0], 200000)])
-    w = np.exp(lp - lp.max()); w /= w.sum()
+    lp = np.concatenate([post.logp(Z[s : s + 200000]).ravel() for s in range(0, Z.shape[0], 200000)])
+    w = np.exp(lp - lp.max())
+    w /= w.sum()
     m_grid = w @ Z
-    v_grid = w @ (Z ** 2) - m_grid ** 2
+    v_grid = w @ (Z**2) - m_grid**2
 
     q = ModeQuadrature(post, mu0, S0, n_per_axis=48, max_modes=8)
     assert q.n_modes >= 2, q.diagnostics()
@@ -169,10 +180,11 @@ def test_broad_low_peak_survives_the_mode_cap():
         def jacobian(self, z, X):
             z = jnp.asarray(z)
             c = jnp.where(z[0] > 0, self.chi, self.clo)
-            return jnp.broadcast_to(jnp.array([[2.0 * z[0], c]])[None],
-                                    (jnp.asarray(X).shape[0], 1, 2))
+            return jnp.broadcast_to(jnp.array([[2.0 * z[0], c]])[None], (jnp.asarray(X).shape[0], 1, 2))
 
-    mu0 = np.array([0.2, 0.0]); S0 = np.diag([1.0, 1.0]); R = np.array([[0.2 ** 2]])
+    mu0 = np.array([0.2, 0.0])
+    S0 = np.diag([1.0, 1.0])
+    R = np.array([[0.2**2]])
     post = ref.Posterior(Wells(8.0, 0.08), np.zeros((4, 1)), np.full((4, 1), 1.0), mu0, S0, R)
 
     q_all = ModeQuadrature(post, mu0, S0, n_per_axis=40, max_modes=8)
@@ -193,12 +205,21 @@ def test_broad_low_peak_survives_the_mode_cap():
 def test_search_log_records_what_was_found_and_why_it_went():
     rng = np.random.default_rng(5)
     A = rng.normal(size=(1, 2))
-    mu0 = np.zeros(2); S0 = np.eye(2); R = np.array([[0.3 ** 2]])
+    mu0 = np.zeros(2)
+    S0 = np.eye(2)
+    R = np.array([[0.3**2]])
     post = ref.Posterior(LinearModel(A), rng.normal(size=(3, 2)), np.zeros((3, 1)), mu0, S0, R)
     q = ModeQuadrature(post, mu0, S0, n_per_axis=20)
     d = q.diagnostics()
-    for k in ("n_found_before_truncation", "weights_before_truncation", "mass_dropped_by_mode_cap",
-              "mass_dropped_by_weight_floor", "n_retained", "optimiser_failures", "starts"):
+    for k in (
+        "n_found_before_truncation",
+        "weights_before_truncation",
+        "mass_dropped_by_mode_cap",
+        "mass_dropped_by_weight_floor",
+        "n_retained",
+        "optimiser_failures",
+        "starts",
+    ):
         assert k in d["search"], (k, d["search"].keys())
     assert d["search"]["starts"] > 0
     assert "log_unnormalised_evidence" in d and "n_sd" not in d
@@ -212,9 +233,9 @@ def test_predictive_normalisation_is_reported_not_hidden():
     which is the case in a checkout that has the library alone.
     """
     import sys
+
     sys.path.insert(0, "experiments/suff")
-    pytest.importorskip("suff_common",
-                        reason="needs experiments/suff, which ships separately from the library")
+    pytest.importorskip("suff_common", reason="needs experiments/suff, which ships separately from the library")
     from suff_common import CONFIGS, make_problem
 
     from bed.quadrature import expected_posterior_variance
@@ -256,11 +277,10 @@ def test_generated_tex_control_words_are_letters_only(tmp_path):
     # Expand EVERY macro, not one of them. A definition can be well formed while its body is not,
     # and a document that uses a single macro compiles cleanly with sixty-four broken ones behind it.
     body = "\n".join("\\%s\\par" % n for n in names)
-    (d / "t.tex").write_text("\\documentclass{article}\n\\input{macros.tex}\n"
-                             "\\begin{document}\n" + body + "\n\\end{document}\n")
-    r = subprocess.run(["pdflatex", "-interaction=nonstopmode", "t.tex"],
-                       cwd=d, capture_output=True, text=True)
+    (d / "t.tex").write_text(
+        "\\documentclass{article}\n\\input{macros.tex}\n\\begin{document}\n" + body + "\n\\end{document}\n"
+    )
+    r = subprocess.run(["pdflatex", "-interaction=nonstopmode", "t.tex"], cwd=d, capture_output=True, text=True)
     log = (d / "t.log").read_text() if (d / "t.log").exists() else ""
     errors = [ln for ln in log.splitlines() if ln.startswith("!")]
-    assert r.returncode == 0 and not errors, \
-        f"{len(errors)} TeX errors expanding {len(names)} macros: {errors[:5]}"
+    assert r.returncode == 0 and not errors, f"{len(errors)} TeX errors expanding {len(names)} macros: {errors[:5]}"

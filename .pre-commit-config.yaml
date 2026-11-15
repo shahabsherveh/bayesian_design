@@ -19,6 +19,11 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.5
     hooks:
+      - id: ruff-format
+        # Enforces the formatting so the tree cannot drift back to mixed style after
+        # the one-off reformat. Fails (rather than rewriting) so a commit never silently
+        # changes files; run `ruff format` to apply.
+        files: ^(src|tests|experiments)/.*\.py$
       - id: ruff-check
         # The rule set lives in pyproject.toml; no --fix here, so a commit cannot
         # silently rewrite the working tree.

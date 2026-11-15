@@ -14,9 +14,7 @@ class TestGaussianProcessModel:
     X_obs_idx = np.random.choice(np.arange(len(X)), size=10, replace=False)
     X_obs = X[X_obs_idx]
     kernel_obs = RBF()
-    y_obs = multivariate_normal(
-        mean=np.zeros(len(X_obs)), cov=kernel_obs(X_obs, X_obs)
-    ).rvs()
+    y_obs = multivariate_normal(mean=np.zeros(len(X_obs)), cov=kernel_obs(X_obs, X_obs)).rvs()
     import time
 
     t = 1000 * time.time()  # current time in milliseconds

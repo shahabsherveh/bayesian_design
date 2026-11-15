@@ -27,6 +27,7 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
   (JAX recompilation dominates; do not reduce seed/sample counts to speed it up — flaky).
 - **Test (focused):** `pytest tests/<file>.py::<test>`
 - **Lint:** `ruff check src/ tests/ experiments/`
+- **Format:** `ruff format --check src/ tests/ experiments/` (apply with `ruff format`)
 - **Type:** `ty check src/`
 - **Markdown:** `pymarkdown --config .pymarkdown.json scan`
 - **All fast gates:** `pre-commit run --all-files`
@@ -34,11 +35,12 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
 
 ## Code conventions
 
-- **Dense research style**: long lines, semicolons, compact statements. `line-length = 120`.
-- Ruff lint is deliberately **narrow correctness-only**: `E4 E7 E9 F W6 PLE PIE790 RUF046
-  RUF022 I001`. Stylistic rules (`E401 E402 E501 E701 E702 E731 E741`) are ignored on
-  purpose — the codebase was never formatter-normalized and enforcing them would mean a
-  mass rewrite.
+- **Formatted with `ruff format`**, `line-length = 120`. The formatter is authoritative:
+  don't hand-format, and don't tune the line length to fit a particular line.
+- Ruff lint covers correctness **and** the standard style rules (`E401 E501 E701 E702 E731
+  E741` are enabled now that the tree is formatted). The one exception is `experiments/**`,
+  which relaxes `E402` (a `jax.config.update(...)` must run before the `bed` imports) and
+  `E501` (long tabular result strings). See `[tool.ruff.lint.per-file-ignores]`.
 - Public namespaces (`bed.models`, `bed.experiments`, `bed.filters`) are **thin re-export
   shims** over `_models`/`_experiments` (staging step marked `# refactor`). Keep imports
   stable for callers; do not remove the shims casually.
@@ -47,9 +49,10 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
 
 ## Boundaries (do not cross without an explicit decision)
 
-- **Never mass-reformat.** The tree has ~1400 `E501` (line-too-long) and hundreds of `E702`
-  (semicolon) violations; enabling stylistic ruff rules would bury real defects. A
-  deliberate `ruff format` pass is a separate decision, not an incidental change.
+- **The tree is `ruff format`ted and enforced.** Every Python file is formatted; `ruff
+  format --check` runs in pre-commit and CI, so an unformatted file cannot land. Run
+  `ruff format` before committing. Do not hand-format against it, and do not relax the
+  rule set to make a diff smaller — fix the code.
 - **Do not weaken the quality bar.** `ruff` clean, `ty` exit 0 (scoped to `src/`; the
   `tests/`/`experiments/` diagnostics are intentionally not gated), `pymarkdown` clean,
   full `pytest` green. `src/` has **zero** `ty` diagnostics and `terminal.error-on-warning`

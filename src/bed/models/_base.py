@@ -19,8 +19,7 @@ class Model:
 
     def jacobian(self, z, x):
         """Return the Jacobian of the measurement with respect to ``z``."""
-        raise NotImplementedError(
-            "Subclasses must implement the jacobian method.")
+        raise NotImplementedError("Subclasses must implement the jacobian method.")
 
     def train(self, x_train, y_train, rngs: Any, epochs: int = 200, learning_rate: float = 0.1, **kwargs):
         """
@@ -52,5 +51,4 @@ class Model:
             This is a placeholder. Subclasses must override this method.
         """
 
-        raise NotImplementedError(
-            "Subclasses must implement the __call__ method.")
+        raise NotImplementedError("Subclasses must implement the __call__ method.")

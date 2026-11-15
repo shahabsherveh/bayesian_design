@@ -29,12 +29,12 @@ class GP:
     sigma: float | None = None
 
     def __init__(
-            self,
-            kernel,
-            theta,
-            X,
-            observable_designs: list[int] | None = None,
-            R=np.eye(2),
+        self,
+        kernel,
+        theta,
+        X,
+        observable_designs: list[int] | None = None,
+        R=np.eye(2),
     ):
         """Initialize a kernel-based design model.
 
@@ -67,10 +67,8 @@ class GP:
             Array of shape (m, k) where m is number of valid allocations and k is
             number of design points. Each row sums to n.
         """
-        search_space_all = np.array(np.meshgrid(
-            *[np.arange(n)] * n)).T.reshape(-1, n)
-        search_space_filtered = search_space_all[search_space_all.sum(
-            axis=1) == n]
+        search_space_all = np.array(np.meshgrid(*[np.arange(n)] * n)).T.reshape(-1, n)
+        search_space_filtered = search_space_all[search_space_all.sum(axis=1) == n]
         return search_space_filtered
 
     @staticmethod
@@ -86,10 +84,7 @@ class GP:
         Returns:
             Array of shape (nx*ny, 2) containing all grid points
         """
-        xx, yy = np.meshgrid(
-            np.linspace(-1, 1, design_dim[0]
-                        ), np.linspace(-1, 1, design_dim[1])
-        )
+        xx, yy = np.meshgrid(np.linspace(-1, 1, design_dim[0]), np.linspace(-1, 1, design_dim[1]))
         return np.column_stack([xx.flatten(), yy.flatten()])
 
     def generate_outcomes(self, x: np.ndarray) -> np.ndarray:
@@ -110,9 +105,7 @@ class GP:
         """
         mean = x @ self.theta
         if self.sigma is None:
-            raise AttributeError(
-                "GP.generate_outcomes requires sigma; set gp.sigma before calling it."
-            )
+            raise AttributeError("GP.generate_outcomes requires sigma; set gp.sigma before calling it.")
         return mean + np.random.normal(0, self.sigma, size=mean.shape)
 
     def _subset_designs(self, indices: list[int] | None) -> np.ndarray:
@@ -201,12 +194,8 @@ class GP:
             The problem is solved immediately upon calling this method. Access
             optimal allocations via self.d_opt_problem.var_dict["eta"].value.
         """
-        eta = cp.Variable(len(self.observable_designs),
-                          nonneg=True, name="eta")
-        moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i]
-                for i in range(len(self.info_matrices))]
-        )
+        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
+        moment_matrix = cp.sum([eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))])
         criterion = -cp.log_det(self.R + moment_matrix)
 
         objective = cp.Minimize(criterion)
@@ -234,12 +223,8 @@ class GP:
             The problem is solved immediately upon calling this method. Access
             optimal allocations via self.a_opt_problem.var_dict["eta"].value.
         """
-        eta = cp.Variable(len(self.observable_designs),
-                          nonneg=True, name="eta")
-        moment_matrix = cp.sum(
-            [eta[i] * self.info_matrices[i]
-                for i in range(len(self.info_matrices))]
-        )
+        eta = cp.Variable(len(self.observable_designs), nonneg=True, name="eta")
+        moment_matrix = cp.sum([eta[i] * self.info_matrices[i] for i in range(len(self.info_matrices))])
         criterion = cp.tr_inv(self.R + moment_matrix)
 
         objective = cp.Minimize(criterion)
@@ -266,6 +251,7 @@ class GP:
             Allocations are rounded to 2 decimal places for display.
         """
         import matplotlib.pyplot as plt
+
         eta = np.asarray(problem.var_dict["eta"].value, dtype=float).round(2)
         plt.scatter(
             self.observable_designs[:, 0],
@@ -431,9 +417,7 @@ class GaussianProcessModel:
 
         # Assemble full covariance matrix
         cov = np.zeros((len(self.X), len(self.X)))
-        cov[np.ix_(X_pred_idx, X_pred_idx)] = (
-            pred_cov  # Only prediction points have uncertainty
-        )
+        cov[np.ix_(X_pred_idx, X_pred_idx)] = pred_cov  # Only prediction points have uncertainty
 
         return multivariate_normal(mean=mean, cov=cov, allow_singular=True)
 
@@ -485,20 +469,16 @@ class GaussianProcessModel:
             observed_idx: Optional indices of observed points to mark
         """
         import matplotlib.pyplot as plt
+
         fig, ax = plt.subplots()
-        xx1, xx2 = np.meshgrid(
-            np.unique(self.X[:, 0]), np.unique(self.X[:, 1]))
+        xx1, xx2 = np.meshgrid(np.unique(self.X[:, 0]), np.unique(self.X[:, 1]))
         pred_idx = (
-            np.setdiff1d(np.arange(len(self.X)), observed_idx)
-            if observed_idx is not None
-            else np.arange(len(self.X))
+            np.setdiff1d(np.arange(len(self.X)), observed_idx) if observed_idx is not None else np.arange(len(self.X))
         )
         x1_obs, x2_obs = self.X[observed_idx][:, 0], self.X[observed_idx][:, 1]
         x1_pred, x2_pred = self.X[pred_idx][:, 0], self.X[pred_idx][:, 1]
         cmap = plt.get_cmap("PiYG")
-        cntr = ax.pcolormesh(
-            xx1, xx2, sample.reshape(xx1.shape), cmap=cmap, shading="auto"
-        )
+        cntr = ax.pcolormesh(xx1, xx2, sample.reshape(xx1.shape), cmap=cmap, shading="auto")
         fig.colorbar(cntr, ax=ax)
         ax.plot(x1_obs, x2_obs, "rx", label="Observed Points", markersize=12)
         ax.plot(x1_pred, x2_pred, "bo", label="Predicted Points", markersize=12)

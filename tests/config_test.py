@@ -1,4 +1,5 @@
 """Configuration builders and bundled experiment configs."""
+
 import os
 
 import jax.numpy as jnp
@@ -55,7 +56,9 @@ def test_synthetic_config_falls_back_to_the_model_config_for_the_ground_truth():
 
 
 def test_short_run_of_experiment_0_completes():
-    results = climain.run_experiment_from_config("experiment_0", iterations=2, strategies=["EPIG", "RANDOM"], show_plot=False)
+    results = climain.run_experiment_from_config(
+        "experiment_0", iterations=2, strategies=["EPIG", "RANDOM"], show_plot=False
+    )
     r = results.experiment_results_dict["ekf"]["EPIG"]
     assert len(r.rmse_pool) == 2
     # experiment_0 uses grid_search, which now selects real pool points: each

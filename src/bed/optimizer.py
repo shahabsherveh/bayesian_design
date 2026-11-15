@@ -1,7 +1,6 @@
 """Optimization interfaces used by experimental-design algorithms."""
 
 
-
 class OptimizerBase:
     """Base interface for optimizers over a candidate search space."""
 

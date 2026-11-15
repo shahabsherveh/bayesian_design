@@ -32,15 +32,11 @@ class TestEKF:
         posterior = ekf.get_state_posterior(measurement=measurement, x=X)
         cov_prior = state_cov
         mean_pior = state
-        S = jnp.linalg.inv(cov_prior) + jnp.linalg.inv(measurement_cov)[
-            0, 0
-        ] * jnp.outer(X_bias, X_bias)
+        S = jnp.linalg.inv(cov_prior) + jnp.linalg.inv(measurement_cov)[0, 0] * jnp.outer(X_bias, X_bias)
         cov_pos = jnp.linalg.inv(S)
         mean_pos = cov_pos @ (
             jnp.linalg.inv(cov_prior) @ mean_pior
-            + jnp.linalg.inv(measurement_cov)[0, 0]
-            * X_bias[:, None]
-            * measurement[0, 0]
+            + jnp.linalg.inv(measurement_cov)[0, 0] * X_bias[:, None] * measurement[0, 0]
         )
 
         assert jnp.allclose(posterior[0], mean_pos, rtol=1e-4)
@@ -62,9 +58,7 @@ class TestEKF:
             state_innovation_cov,
             measurement_cov,
         )
-        posterior = ekf.measurement_posterior(
-            measurement=measurement, x_obs=X, x_pred=X + 1
-        )
+        posterior = ekf.measurement_posterior(measurement=measurement, x_obs=X, x_pred=X + 1)
 
         cov_est = ekf.measurement_posterior_cov_estimate(
             X + 1,

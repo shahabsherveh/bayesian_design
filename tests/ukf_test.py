@@ -22,9 +22,7 @@ def test_ukf_nonlinear_update_reduces_uncertainty():
     )
 
     prior_mean, prior_cov = ukf.measurement_prior(jnp.array([[[[2.0]]]]))
-    posterior_mean, posterior_cov = ukf.get_state_posterior(
-        jnp.array([[2.5]]), jnp.array([[[[2.0]]]])
-    )
+    posterior_mean, posterior_cov = ukf.get_state_posterior(jnp.array([[2.5]]), jnp.array([[[[2.0]]]]))
 
     assert prior_mean.shape == (1, 1)
     assert prior_cov.shape == (1, 1, 1)
@@ -42,9 +40,7 @@ def test_ukf_batched_measurement_prior():
         measurement_error=jnp.array([[0.1]]),
     )
 
-    mean, covariance = ukf.measurement_prior(
-        jnp.array([[[[1.0]]], [[[2.0]]]])
-    )
+    mean, covariance = ukf.measurement_prior(jnp.array([[[[1.0]]], [[[2.0]]]]))
 
     assert mean.shape == (2, 1)
     assert covariance.shape == (2, 1, 1)
