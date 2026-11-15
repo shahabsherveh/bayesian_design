@@ -7,7 +7,7 @@ which returns a new filter sharing `model` and copying only the belief arrays.
 `EKF` and `UKF` inherit it and declare which attributes to copy. `run()` uses
 `filtr.snapshot()` instead of `deepcopy(filtr)`.
 
-Spec: [SPEC-trace-snapshot.md](../SPEC-trace-snapshot.md) (delta, approved: shared mixin).
+Spec: [docs/specs/SPEC-trace-snapshot.md](../docs/specs/SPEC-trace-snapshot.md) (delta, approved: shared mixin).
 
 ## Design
 

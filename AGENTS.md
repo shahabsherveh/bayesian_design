@@ -79,6 +79,6 @@ python -m pip install -r requirements-dev.txt   # pytest, linters, pre-commit
 - `tasks/plan.md` + `tasks/todo.md` — current task plan and checklists. `tasks/todo.md`
   holds the ordered **deferred backlog** (first unchecked item is the next one to pick up).
   The backlog was originally recorded in `docs/STATUS.md` (retired) and migrated here.
-- `SPEC-*.md` — approved spec deltas (one per shipped change).
+- `docs/specs/SPEC-*.md` — approved spec deltas (one per shipped change).
 - `graphify-out/graph.json` — project knowledge graph; `graphify query "<question>"` for
   file/relation lookups (refresh with `graphify update` when it is stale).

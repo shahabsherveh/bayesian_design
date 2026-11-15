@@ -1,6 +1,6 @@
 # Spec Delta: Split `_models.py` into family modules
 
-Status: proposed
+Status: implemented
 
 ## Objective
 
