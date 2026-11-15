@@ -8,42 +8,42 @@ Target: 0 diagnostics, `--error-on-warning` exits 0, suite 156 passed / 3 skippe
 
 ## Phase 1: self-contained annotations
 
-- [ ] **Task 1** — `callable` → `Callable` (`sequential.py:42`, `toy.py:40,41`)
+- [x] **Task 1** — `callable` → `Callable` (`sequential.py:42`, `toy.py:40,41`)
   - verify: `ty check src/ --output-format=concise | grep invalid-type-form` empty
-- [ ] **Task 2** — `ISResult` optional diagnostics as fields (B)
+- [x] **Task 2** — `ISResult` optional diagnostics as fields (B)
   - verify: `ty check src/ --output-format=concise | grep "Unresolved attribute"` drops to 0 for `reference.py`
-- [ ] **Task 3** — `Moments` cross/prime fields `| None`
+- [x] **Task 3** — `Moments` cross/prime fields `| None`
   - verify: `diagnostics.py` `invalid-argument-type` count drops by 9
 
 ### Checkpoint
 
-- [ ] `ty check src/ --output-format=concise | grep -c '^src/'` ≈ 50
+- [x] `ty check src/ --output-format=concise | grep -c '^src/'` ≈ 50
 
 ## Phase 2: contracts and narrowing
 
-- [ ] **Task 4** — `Model` base declares `weight_size`/`output_dim`/`weight_mapping`; overrides compatible
+- [x] **Task 4** — `Model` base declares `weight_size`/`output_dim`/`weight_mapping`; overrides compatible
   - verify: `incompatible-method-override` count is 0
-- [ ] **Task 5** — `FilterSnapshotMixin` declares `model` so `base.py:142` resolves
+- [x] **Task 5** — `FilterSnapshotMixin` declares `model` so `base.py:142` resolves
   - verify: `ty check src/bed/base.py` clean
-- [ ] **Task 6** — remaining `None`-narrowing sites (`empirical_bayes`, `classical`,
+- [x] **Task 6** — remaining `None`-narrowing sites (`empirical_bayes`, `classical`,
   `gaussian_process`, `sequential`, `reference`, `_experiments`)
   - verify: `missing-union-attribute` count is 0
-- [ ] **Task 7** — overload/builtin picks (`adaptive.py`, `toy.py:92`, `gaussian_design.py:269`)
+- [x] **Task 7** — overload/builtin picks (`adaptive.py`, `toy.py:92`, `gaussian_design.py:269`)
   - verify: `no-matching-overload` count is 0
-- [ ] **Task 8** — optional-import + `possibly-missing-submodule` (`data.py`, `neural.py:100`)
+- [x] **Task 8** — optional-import + `possibly-missing-submodule` (`data.py`, `neural.py:100`)
   - verify: only the documented config-override diagnostics remain
 
 ### Checkpoint (phase 2)
 
-- [ ] `ty check src/ --error-on-warning` exits 0
+- [x] `ty check src/ --error-on-warning` exits 0
 
 ## Phase 3: flip
 
-- [ ] **Task 9** — drop `--exit-zero-on-warning` from `pyproject.toml`,
+- [x] **Task 9** — drop `--exit-zero-on-warning` from `pyproject.toml`,
   `.pre-commit-config.yaml`, `.github/workflows/tests.yml`; prune now-unused
   `[tool.ty.rules]` downgrades; update `AGENTS.md` + spec status
   - verify: `grep -rn "exit-zero-on-warning" . --exclude-dir=.venv` → none
-- [ ] **Task 10** — full gate set
+- [x] **Task 10** — full gate set
   - `ruff check src/ tests/ experiments/`
   - `ty check src/ --error-on-warning`
   - `pymarkdown --config .pymarkdown.json scan`
@@ -51,9 +51,9 @@ Target: 0 diagnostics, `--error-on-warning` exits 0, suite 156 passed / 3 skippe
 
 ### Checkpoint: Complete
 
-- [ ] all gates green
-- [ ] no new `noqa`/`# type: ignore` in `src/` (grep-verified)
-- [ ] diff reviewed as annotation-only
+- [x] all gates green
+- [x] no new `noqa`/`# type: ignore` in `src/` (grep-verified)
+- [x] diff reviewed as annotation-only
 
 ---
 
@@ -77,5 +77,5 @@ spec-approval gate.
 - [ ] 7. (Optional) Enable stylistic ruff rules after a deliberate `ruff format` pass.
   **Not started** — would mass-rewrite ~every file (526 `E702`, 290 `E501`, 957
   findings); needs its own spec and an explicit reformat decision.
-- [ ] 8. Typing pass on `src/` to clear the 74 `ty` warnings, then flip the gate to
-  `--error-on-warning`. **In progress** — see this task list.
+- [x] 8. Typing pass on `src/` cleared all 74 `ty` diagnostics and flipped the gate to
+  `--error-on-warning` (#21).

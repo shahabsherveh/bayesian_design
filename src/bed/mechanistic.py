@@ -33,6 +33,10 @@ class ClosedFormModel(Model):
     the Jacobian (by automatic differentiation) are shared.
     """
 
+    # Set by the subclass.
+    output_dim: int
+    weight_size: int
+
     def _single(self, z, x):
         raise NotImplementedError
 
@@ -221,6 +225,10 @@ class DivideProblem:
     biomarker_scale: jnp.ndarray   # (3,)
     candidates: jnp.ndarray        # (n, 4) with kind = 0
     targets: jnp.ndarray           # (3, 4) with kind = 1..3
+    # Attached by ``make_divide_problem`` after construction: the log-scale targets and
+    # their scale factors used by the terminal-loss readout.
+    log_targets: jnp.ndarray | None = None
+    log_scale: jnp.ndarray | None = None
 
 
 def divide_te_min(b, b_delta):

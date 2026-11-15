@@ -39,10 +39,10 @@ jobs:
 
       - name: ty
         # src/ only: tests/ and experiments/ import sibling scripts via sys.path and
-        # carry Optional-narrowing patterns ty cannot follow. --exit-zero-on-warning
-        # means only error-level diagnostics fail the job; the pre-existing warnings
-        # do not.
-        run: ty check src/ --exit-zero-on-warning
+        # carry Optional-narrowing patterns ty cannot follow. src/ itself has zero
+        # diagnostics, and pyproject.toml sets terminal.error-on-warning, so any new
+        # diagnostic of any severity fails this step.
+        run: ty check src/
 
   test:
     runs-on: ubuntu-latest

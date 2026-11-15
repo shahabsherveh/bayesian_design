@@ -161,6 +161,8 @@ class AdaptiveQuadrature:
                 totals = v if totals is None else totals + v
                 heapq.heappush(heap, _Cell(clo, chi, pts, W, v, float(e.max()), min_depth))
                 n_cells += 1
+        if totals is None:
+            raise RuntimeError("refinement produced no cells")
 
         history = []
         while n_cells < max_cells:

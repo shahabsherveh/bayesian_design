@@ -90,7 +90,7 @@ class GridModel:
     # --- policies ------------------------------------------------------------------------------
     def fixed_best(self, H, kind):
         vals = {seq: self.expected_terminal(self.prior, list(seq), kind) for seq in product(range(self.n), repeat=H)}
-        best = min(vals, key=vals.get)
+        best = min(vals, key=lambda seq: vals[seq])
         return list(best), vals[best], vals
 
     def fixed_greedy(self, H, kind):

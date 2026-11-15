@@ -253,7 +253,7 @@ def greedy(beliefs, crit, budget, warm=(), replace=True, rng=None):
     """One pass of greedy selection on the averaged score, starting after the (data-free) warm-start
     designs. Returns the selected indices (excluding the warm start) and the trace of the summed
     target variance (averaged over draws) after each selection, warm start included as entry 0."""
-    Ss = [beliefs.S0.copy() for _ in range(beliefs.K)]; used = list(warm)
+    Ss = [beliefs.S0.copy() for _ in range(beliefs.K)]; used: list[int] = list(warm)
     for i in used:
         Ss = beliefs.update(Ss, i)
     trace = [float(np.sum(beliefs.target_variance(used)))]

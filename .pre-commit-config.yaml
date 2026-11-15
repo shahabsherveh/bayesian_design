@@ -39,7 +39,9 @@ repos:
         name: ty check src/
         # ty is installed with the project dev tooling (see requirements-dev.txt), so
         # this runs the same version as CI rather than whatever happens to be on PATH.
-        entry: ty check src/ --exit-zero-on-warning
+        # No --exit-zero-on-warning: pyproject.toml sets terminal.error-on-warning, and
+        # src/ has zero diagnostics, so any new one of any severity fails the hook.
+        entry: ty check src/
         language: system
         types: [python]
         # ty needs the whole src/ tree to resolve cross-module imports, so it is run as

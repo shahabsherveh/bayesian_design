@@ -22,6 +22,12 @@ class GP:
         R: Prior precision matrix
     """
 
+    # Observation-noise standard deviation used by ``generate_outcomes``. Unlike
+    # ``LinearGaussianModel``, ``GP.__init__`` does not take ``sigma``, so callers must
+    # set it before generating outcomes. Declared (rather than left implicit) so the
+    # requirement is visible; assigned here as ``None`` and validated on use.
+    sigma: float | None = None
+
     def __init__(
             self,
             kernel,
@@ -103,6 +109,10 @@ class GP:
             Assumes self.sigma is defined for observation noise standard deviation.
         """
         mean = x @ self.theta
+        if self.sigma is None:
+            raise AttributeError(
+                "GP.generate_outcomes requires sigma; set gp.sigma before calling it."
+            )
         return mean + np.random.normal(0, self.sigma, size=mean.shape)
 
     def _subset_designs(self, indices: list[int] | None) -> np.ndarray:
@@ -266,7 +276,7 @@ class GP:
         plt.colorbar(label="allocation")
         plt.show()
 
-    def A_opt_criterion(self, eta: list[int], R: np.ndarray) -> float:
+    def A_opt_criterion(self, eta: np.ndarray, R: np.ndarray) -> float:
         """
         Evaluate A-optimality criterion for given design allocation.
 

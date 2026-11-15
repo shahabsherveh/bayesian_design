@@ -1,6 +1,6 @@
 # Spec Delta: Type `src/` cleanly and gate on warnings
 
-Status: proposed
+Status: implemented
 
 ## Objective
 
