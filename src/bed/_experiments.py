@@ -582,7 +582,11 @@ class Experiment:
             mean_test_glob, cov_test_glob = filtr.measurement_prior(
                 self.data.x_test_glob)
             if trace:
-                filters.append(deepcopy(filtr))
+                # Snapshot the belief (sharing the immutable model) rather than
+                # deep-copying the whole filter, which would clone the model graph
+                # every epoch. Fall back to deepcopy for filters without snapshot().
+                snap = getattr(filtr, "snapshot", None)
+                filters.append(snap() if callable(snap) else deepcopy(filtr))
             rmse_predictions_pool = self.calculate_rmse_predictions(
                 mean_test_pool, self.data.y_test_pool.squeeze()
             )

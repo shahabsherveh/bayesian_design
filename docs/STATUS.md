@@ -351,14 +351,17 @@ Two review claims were wrong and are corrected here rather than acted on:
   collapses it. Removing it broke 7 runner tests. It is a documentation defect, not a
   logic defect.
 
-Still open from the review (not done here): `trace=True` deep-copying a full
-covariance per epoch. Four items were done in follow-up deltas: the stale
+All five review items are now resolved in follow-up deltas: the stale
 `Experiment`/`ExperimentResults` docstrings (`SPEC-stale-docstrings.md`),
 splitting `_models.py` into per-family modules (`SPEC-split-models.md`),
 unifying the `optimize()` return shape (`SPEC-unify-optimize-return.md` —
 `grid_search` now samples pool points and `gradient_ascent` snaps to the nearest
-pool point, so `selected_indices` and `exclude` work for every method), and
-stopping `run()` from reseeding `self._rng` (`SPEC-rng-reseed.md` — the generator
-is threaded per call, so bare `run()` calls advance rather than replay and an
-explicit `rng` leaves the instance stream untouched). Suite is 149 passed, 3
-skipped after the new tests. See `tasks/plan.md`.
+pool point, so `selected_indices` and `exclude` work for every method), stopping
+`run()` from reseeding `self._rng` (`SPEC-rng-reseed.md` — the generator is
+threaded per call, so bare `run()` calls advance rather than replay and an
+explicit `rng` leaves the instance stream untouched), and replacing the
+full-object `deepcopy` in `trace=True` with a belief-only `FilterSnapshotMixin`
+(`SPEC-trace-snapshot.md` — the model is shared, not cloned per epoch, and
+snapshotting is ~35% faster than `deepcopy`; the dominant per-epoch cost, the
+latent covariance itself, is inherent to recording the belief). Suite is 156
+passed, 3 skipped after the new tests. See `tasks/plan.md`.

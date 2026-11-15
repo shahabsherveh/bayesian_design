@@ -13,10 +13,11 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.stats import multivariate_normal
 
+from .base import FilterSnapshotMixin
 from .models import Model
 
 
-class EKF:
+class EKF(FilterSnapshotMixin):
     """
     Extended Kalman Filter for state estimation and experimental design.
 
