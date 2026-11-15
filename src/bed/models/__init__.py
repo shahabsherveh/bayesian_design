@@ -1,27 +1,28 @@
 """Model implementations used by Bayesian experimental design.
 
-The implementation is kept behind ``bed._models`` for now so existing
-``from bed.models import ...`` imports remain compatible while new code can
-import by model family.
+The implementations live in per-family modules beside this package
+(``classical``, ``gaussian_process``, ``neural``) with the shared ``Model`` base in
+``_base``. ``bed._models`` remains a thin re-export shim for backward compatibility.
 """
 
-from bed._models import (
-    CNN,
-    GP,
-    DenseNN,
-    FlaxModel,
-    GaussianProcessModel,
+from ._base import Model
+from .classical import (
     LinearGaussianModel,
     LinearModel,
+    generate_full_design_matrix,
+)
+from .gaussian_process import GP, GaussianProcessModel
+from .neural import (
+    CNN,
+    DenseNN,
+    FlaxModel,
     LinearNN,
-    Model,
     NeuralNetworkBase,
     NeuralNetworkClassifier,
     NeuralNetworkRegressor,
     NNFLax,
     Sinus,
     SinusInverse,
-    generate_full_design_matrix,
 )
 
 __all__ = [

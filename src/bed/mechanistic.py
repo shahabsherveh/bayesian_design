@@ -15,8 +15,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bed._models import Model
 from bed.data import Data
+from bed.models import Model
 
 # Population values used as the prior mean (theophylline-like): k_a, k_e [1/h], V [L],
 # k_e0 [1/h], E_max, EC_50 [mg/L], E_0 (effect units).
