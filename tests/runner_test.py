@@ -83,6 +83,17 @@ def test_epig_reduces_pool_uncertainty():
     assert np.all(np.diff(sd) <= 1e-9)  # with Q = 0 the predictive variance cannot grow
 
 
+def test_run_experiment_with_default_arguments():
+    # The default criteria list must name only strategies run() knows. It previously
+    # carried "RAND", so a bare run_experiment() call raised before doing any work.
+    # EPIG-MC is deliberately not a default: its nested Monte Carlo estimate is far
+    # more expensive than the closed-form criteria, so it must be opted into.
+    results = _make_experiment().run_experiment(
+        iterations=1, filter_types=["ekf"], filter_params=[{}], optimizer_method="brute_force")
+    by_criterion = results.experiment_results_dict["ekf"]
+    assert set(by_criterion) == {"WARM-START", "EPIG", "EIG", "RANDOM"}
+
+
 def test_unknown_criterion_raises():
     exp = _make_experiment()
     filt = EKF(exp.model, exp.state_init_prior[0], exp.state_init_prior[1], 0.0, exp.measurement_error)

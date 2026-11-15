@@ -322,3 +322,37 @@ The suite now runs non-interactively with plain `pytest tests/`; the
 10. Optionally do a typing pass on `src/` to clear the 70 `ty` warnings, then flip the gate
     to `--error-on-warning`. The main items are annotating `self.model` on the
     `ISResult`/`Posterior` paths and declaring the attributes set after construction.
+
+## Follow-up: post-review fixes
+
+A whole-repository review at `4cfb16f` re-ran the gates and found three defects the gates
+did not catch. Fixed on branch `fix/review-critical-findings`:
+
+| Defect | Fix |
+| --- | --- |
+| `run_experiment()` default `criteria` named `"RAND"`, which is not a key of `run()`'s criterion dict, so a bare call raised `ValueError` before doing any work | Default is now `EPIG`, `EIG`, `RANDOM`; new `test_run_experiment_with_default_arguments` covers the bare call. `test_unknown_criterion_raises` still asserts `"RAND"` is rejected, so the bad name cannot return. `EPIG-MC` is deliberately excluded from the defaults because its nested Monte Carlo estimate costs `num_latent_samples` evaluations per pool point; it is still available via `run()` and `--strategies` |
+| `bed.models` re-exported `scipy.stats.multivariate_normal` and listed it in `__all__`, making a third-party symbol part of the public model namespace | Import and `__all__` entry removed; `tests/gp_test.py` imports scipy directly |
+| `calculate_rmse`'s docstring promised "covariance matrix or batch" but the body averaged over the batch, so the documented single-matrix contract was undocumented behaviour | Body unchanged (the `.mean()` is load-bearing: `measurement_prior` returns a batch `(n, d_y, d_y)`); docstring now states the batch contract and the mean-over-batch semantics |
+
+Mutable default arguments in `run()`, `optimize()` and `run_experiment()` were also
+converted to `None` with in-body defaults.
+
+Verification after the fixes: **139 passed, 3 skipped** (256s with `-n auto`), `ruff`
+clean, `ty` exit 0 with the same 72 warnings (no new ones), `pymarkdown` clean. The
+predicted count in the task plan was 139.
+
+Two review claims were wrong and are corrected here rather than acted on:
+
+- "`multivariate_normal` has zero references" was wrong: `tests/gp_test.py` imported it
+  from `bed.models`. The grep used a single-line pattern and missed a multi-line import.
+  The leak was still a real defect; only the supporting evidence was overstated.
+- "`calculate_rmse`'s `.mean()` is a no-op" was wrong. Both filters return a batched
+  `measurement_prior` covariance `(n, d_y, d_y)`, so `trace` yields a vector and `.mean()`
+  collapses it. Removing it broke 7 runner tests. It is a documentation defect, not a
+  logic defect.
+
+Still open from the review (not done here): stale `Experiment`/`ExperimentResults`
+docstrings, splitting `_models.py` (1297 lines) beside its shims, the `optimize()`
+return-shape inconsistency (int index vs design vector) that makes `used_indices` inert
+for `gradient_ascent`/`grid_search`, `_rng` being reseeded inside `run()`, and `trace=True`
+deep-copying a full covariance per epoch. See `tasks/plan.md`.
